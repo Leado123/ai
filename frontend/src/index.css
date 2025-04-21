@@ -1,0 +1,32 @@
+@import url('https://fonts.googleapis.com/css2?family=Rubik:ital,wght@0,300..900;1,300..900&display=swap');
+@import "tailwindcss";
+@plugin "tailwindcss-react-aria-components";
+
+:root {
+  font-family: Inter;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.react-aria-MenuItem {
+  margin: 1vw;
+  padding: 1vw;
+  border-radius: 14px;
+  outline: none;
+  text-align: left;
+  display: flex;
+  cursor: default;
+  color: var(--text-color);
+  font-size: small;
+  position: relative;
+  column-gap: 1vw;
+  forced-color-adjust: none;
+  cursor: pointer;
+
+  &[data-focused] {
+    background: lightgrey;
+  }
+}
