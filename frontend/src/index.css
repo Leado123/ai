@@ -1,6 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Rubik:ital,wght@0,300..900;1,300..900&display=swap');
 @import "tailwindcss";
 @plugin "tailwindcss-react-aria-components";
+@tailwind utilities;
 
 :root {
   font-family: Inter;
@@ -30,3 +31,18 @@
     background: lightgrey;
   }
 }
+
+/* Add custom styles for Markdown headers within prose */
+.prose h1, .dark .prose-invert h1 {
+  @apply text-3xl font-bold mb-4; /* Example: Larger size, bold, margin */
+}
+
+.prose h2, .dark .prose-invert h2 {
+  @apply text-2xl font-semibold mb-3; /* Example: Slightly smaller, semibold, margin */
+}
+
+.prose h3, .dark .prose-invert h3 {
+  @apply text-xl font-semibold mb-2; /* Example: Even smaller, semibold, margin */
+}
+
+/* Add other global styles or component styles below */

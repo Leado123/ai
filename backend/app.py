@@ -1,17 +1,21 @@
+import eventlet # Required for Flask-SocketIO production/async modes
+# Monkey patch MUST be done before other imports like Flask, SocketIO, etc.
+eventlet.monkey_patch()
+
+import traceback # Add this import at the top
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from flask_socketio import SocketIO, emit
 from g4f.client import Client
-from g4f.Provider import PollinationsAI, RetryProvider
+from g4f.Provider import PollinationsAI, RetryProvider, bing, You, Gemini
 import logging
+import time # Import time if not already
 
 # --- g4f Client Setup ---
-# Configure logging for g4f if needed
-# logging.basicConfig(level=logging.DEBUG)
-
 try:
     # Initialize the g4f client once when the app starts
     client = Client(
-        provider=RetryProvider([PollinationsAI], single_provider_retry=True, max_retries=5)
+        provider=RetryProvider([bing, You, Gemini, PollinationsAI], single_provider_retry=True, max_retries=5)
     )
     print("g4f Client initialized successfully.")
 except Exception as e:
@@ -21,69 +25,126 @@ except Exception as e:
 
 # --- Flask App Setup ---
 app = Flask(__name__)
-CORS(app) # Enable CORS for requests from your React frontend
+app.config['SECRET_KEY'] = 'your_secret_key!' # Replace with a real secret key
+CORS(app, resources={r"/socket.io/*": {"origins": "*"}}) # Allow CORS for SocketIO
+# Initialize SocketIO, using eventlet for async mode
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 # --- API Routes ---
 @app.route("/")
 def home():
     if not client:
         return "Flask backend: g4f client failed to initialize!", 503
-    return "Flask backend with g4f is running!"
+    return "Flask backend with g4f and SocketIO is running!"
 
-@app.route("/api/chat", methods=["POST"])
-def chat():
-    # Check if the client was initialized successfully
-    if not client:
-         return jsonify({"error": "Chatbot client is not initialized."}), 503 # Service Unavailable
-
-    data = request.get_json()
-    # Expect the client to send the full conversation history
-    conversation_history = data.get("history")
-
-    # --- Input Validation ---
-    if not conversation_history:
-        return jsonify({"error": "'history' is required in the request body"}), 400
-    if not isinstance(conversation_history, list):
-         return jsonify({"error": "'history' must be a list of message objects"}), 400
-    if not conversation_history: # Ensure history is not empty
-         return jsonify({"error": "'history' cannot be empty"}), 400
-    # Basic check for message format (can be more thorough)
-    for msg in conversation_history:
-        if not isinstance(msg, dict) or "role" not in msg or "content" not in msg:
-            return jsonify({"error": "Each item in 'history' must be an object with 'role' and 'content'"}), 400
-    # Ensure the last message is from the user for a valid request flow
-    if conversation_history[-1].get("role") != "user":
-        return jsonify({"error": "The last message in the history must be from the 'user'"}), 400
-    # --- End Input Validation ---
-
-
+# --- Background Task for g4f ---
+def run_g4f_stream(sid, history):
+    """
+    This function runs in a background thread (managed by eventlet/SocketIO)
+    to avoid blocking the main server loop.
+    """
+    print(f"[{sid}] Background task started.")
     try:
-        # Get response from AI using the provided history
-        response = client.chat.completions.create(
-            model="deepseek-r1", # Or another model supported by DeepInfra
-            messages=conversation_history,
-            # web_search=False # Optional
+        # Create a NEW client instance for each request
+        request_client = Client(
+            provider=RetryProvider([PollinationsAI], single_provider_retry=True, max_retries=5)
         )
+        print(f"[{sid}] Created new g4f client instance for this request.")
 
-        # Extract the new assistant response
-        assistant_response = response.choices[0].message.content
-        if not assistant_response:
-             assistant_response = "Sorry, I received an empty response from the AI."
+        print(f"[{sid}] Background task: Attempting g4f stream creation...")
+        response_stream = request_client.chat.completions.create(
+            model="deepseek-r1",
+            messages=history,
+            stream=True,
+            web_search=False
+        )
+        print(f"[{sid}] Background task: g4f stream object created. Starting iteration...")
 
-        # Return only the new assistant message
-        return jsonify({"response": assistant_response})
+        full_response = ""
+        chunk_count = 0
+        stream_finished_reason = None
+
+        for chunk in response_stream:
+            chunk_count += 1
+            finish_reason = chunk.choices[0].finish_reason if chunk.choices and chunk.choices[0].finish_reason else None
+
+            if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
+                chunk_content = chunk.choices[0].delta.content
+                if isinstance(chunk_content, str):
+                    full_response += chunk_content
+                    # Use socketio.emit to send back to the specific client
+                    socketio.emit('message_chunk', {'chunk': chunk_content}, room=sid)
+                    # Use eventlet.sleep in background task too
+                    eventlet.sleep(0.01)
+                else:
+                    print(f"[{sid}] Background task: Skipping non-string chunk content type: {type(chunk_content)}")
+            elif finish_reason:
+                stream_finished_reason = finish_reason
+                print(f"[{sid}] Background task: Finish reason received: '{stream_finished_reason}'. Breaking loop.")
+                break
+            else:
+                pass # Skip other chunk types
+
+        print(f"[{sid}] Background task: Stream loop finished. Reason: {'Natural end' if not stream_finished_reason else stream_finished_reason}. Chunks processed: {chunk_count}.")
+        # Use socketio.emit to send stream_end
+        socketio.emit('stream_end', room=sid)
+        print(f"[{sid}] Background task: 'stream_end' emitted.")
 
     except Exception as e:
-        print(f"Error during g4f chat completion: {e}") # Log the error server-side
-        return jsonify({"error": f"An error occurred while contacting the AI: {e}"}), 500
+        error_traceback = traceback.format_exc()
+        print(f"!!! [{sid}] Background task ERROR: {e}\n{error_traceback}")
+        # Use socketio.emit for errors
+        socketio.emit('error', {'message': f"An error occurred during streaming: {e}"}, room=sid)
+    finally:
+        print(f"[{sid}] Background task finished.")
 
-# --- Run Flask App ---
+# --- SocketIO Event Handlers ---
+@socketio.on('connect')
+def handle_connect():
+    sid = request.sid
+    print(f"Client connected: {sid}")
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    sid = request.sid
+    print(f"Client disconnected: {sid}")
+
+@socketio.on('send_message')
+def handle_send_message(data):
+    sid = request.sid # Get SID
+    print(f"[{sid}] Received 'send_message'. Validating...")
+
+    # --- Input Validation ---
+    if not isinstance(data, dict) or 'history' not in data:
+        emit('error', {'message': "'history' is required in message data."})
+        return
+    conversation_history = data['history']
+    if not isinstance(conversation_history, list) or not conversation_history:
+        emit('error', {'message': "'history' must be a non-empty list."})
+        return
+    for msg in conversation_history:
+        if not isinstance(msg, dict) or "role" not in msg or "content" not in msg:
+            emit('error', {'message': "Invalid message format in 'history'. Each item must be a dict with 'role' and 'content'."})
+            return
+    if conversation_history[-1].get("role") != "user":
+        emit('error', {'message': "Last message must be from 'user'"})
+        return
+    # --- End Input Validation ---
+
+    print(f"[{sid}] Validation passed. Starting background task for g4f stream.")
+
+    # Start the blocking g4f interaction in a background task
+    socketio.start_background_task(run_g4f_stream, sid, conversation_history)
+
+    # Return immediately - the main handler is now non-blocking
+    print(f"[{sid}] handle_send_message finished (background task started).")
+
+# --- Run Flask App with SocketIO ---
 if __name__ == "__main__":
-    # Only run the app if the client initialized correctly
     if client:
-        # Use a different port if 5000 is used by React dev server
-        # Host 0.0.0.0 makes it accessible on your local network
-        app.run(debug=True, port=5001, host='0.0.0.0')
+        print("Starting Flask-SocketIO server...")
+        # Run WITHOUT debug mode for this test
+        socketio.run(app, debug=False, port=5001, host='0.0.0.0')
     else:
         print("Flask app cannot start because g4f client failed to initialize.")
 
