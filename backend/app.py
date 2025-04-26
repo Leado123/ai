@@ -1,21 +1,29 @@
+import os
+import uuid
 import eventlet # Required for Flask-SocketIO production/async modes
 # Monkey patch MUST be done before other imports like Flask, SocketIO, etc.
 eventlet.monkey_patch()
 
+import kreuzberg
 import traceback # Add this import at the top
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 from g4f.client import Client
-from g4f.Provider import PollinationsAI, RetryProvider, bing, You, Gemini
+from g4f.Provider import PollinationsAI, RetryProvider, bing, You, GeminiPro
 import logging
 import time # Import time if not already
 
 # --- g4f Client Setup ---
 try:
     # Initialize the g4f client once when the app starts
+    gemini_api_key = os.getenv("GEMINI_API_KEY")
+    if not gemini_api_key:
+        raise EnvironmentError("GEMINI_API_KEY environment variable is not set.")
+    
     client = Client(
-        provider=RetryProvider([bing, You, Gemini, PollinationsAI], single_provider_retry=True, max_retries=5)
+        provider=GeminiPro(),
+        api_key=gemini_api_key
     )
     print("g4f Client initialized successfully.")
 except Exception as e:
@@ -26,8 +34,7 @@ except Exception as e:
 # --- Flask App Setup ---
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your_secret_key!' # Replace with a real secret key
-CORS(app, resources={r"/socket.io/*": {"origins": "*"}}) # Allow CORS for SocketIO
-# Initialize SocketIO, using eventlet for async mode
+CORS(app, resources={r"/*": {"origins": "*"}})# Initialize SocketIO, using eventlet for async mode
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 # --- API Routes ---
@@ -53,7 +60,7 @@ def run_g4f_stream(sid, history):
 
         print(f"[{sid}] Background task: Attempting g4f stream creation...")
         response_stream = request_client.chat.completions.create(
-            model="deepseek-r1",
+            model="gemini-2.0-flash",
             messages=history,
             stream=True,
             web_search=False
@@ -103,6 +110,47 @@ def run_g4f_stream(sid, history):
 def handle_connect():
     sid = request.sid
     print(f"Client connected: {sid}")
+
+
+@app.route("/extract_text", methods=["POST"])
+def extract_text_route():
+    """
+    Accepts a single file, uses Kreuzberg to extract text, 
+    returns the text as JSON, and deletes the file afterward.
+    """
+    if "file" not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    file = request.files["file"]
+    if file.filename == "":
+        return jsonify({"error": "Empty filename"}), 400
+
+    # Generate a temporary filename
+    temp_filename = f"tmp_{uuid.uuid4()}_{file.filename}"
+    temp_path = os.path.join("/tmp", temp_filename)
+
+    try:
+        # Save file to server temporarily
+        file.save(temp_path)
+        print(f"File received: {file.filename}, saved as {temp_path}")
+
+        # Simulate Kreuzberg text extraction
+        extracted_text = kreuzberg.extract_file_sync(temp_path)
+        print(f"Extracted text: {extracted_text}")
+
+        return jsonify({"text": extracted_text}), 200
+
+    except Exception as e:
+        error_message = f"Error processing file {file.filename}: {e}"
+        print(error_message)
+        return jsonify({"error": error_message}), 500
+
+    finally:
+        # Delete the temporary file even if extraction fails
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+            print(f"Temporary file deleted: {temp_path}")
+
 
 @socketio.on('disconnect')
 def handle_disconnect():

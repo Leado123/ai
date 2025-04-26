@@ -1,0 +1,142 @@
+import { useState, useCallback } from "react";
+import { AnimatePresence, motion, useIsPresent } from "framer-motion";
+import { processFilesForFlashcards } from "../assets/prompts";
+
+function FlashCardCreator({
+    setModalOpen,
+    onFlashcardCreation
+}: {
+    setModalOpen: (open: boolean) => void;
+    onFlashcardCreation: (fileTexts: { fileName: string; text: string }[]) => void
+}) {
+    const [files, setFiles] = useState<File[]>([]);
+    const [customPrompt, setCustomPrompt] = useState("make the terms & definitions short & easy...");
+    const [isLoading, setIsLoading] = useState(false);
+    const isPresent = useIsPresent();
+
+    // Function for smooth closing with animation
+    const closeModal = useCallback(() => {
+        // Instead of immediately setting to false, we'll let the animation complete first
+        const modalContent = document.querySelector(".modal-content");
+        if (modalContent) {
+            modalContent.classList.add("closing");
+            // Only close after animation has time to complete
+            setTimeout(() => setModalOpen(false), 300); // 300ms to ensure animation completes
+        } else {
+            setModalOpen(false); // Fallback if element not found
+        }
+    }, [setModalOpen]);
+
+    // Handle generating flashcards
+    const handleGenerateFlashcards = async () => {
+        if (files.length === 0) return;
+
+        setIsLoading(true);
+        try {
+            const results = await processFilesForFlashcards(files, customPrompt);
+
+            // Generate a Quizlet-compatible flashcard prompt
+            const flashcardPrompt = results.map(({ fileName, text }) => {
+                return `File: ${fileName}\nExtracted Text:\n${text}\n\nGenerate flashcards in the format:\nTerm: [term]\nDefinition: [definition]\n---`;
+            }).join("\n\n");
+
+            console.log("Generated Flashcard Prompt for AI:", flashcardPrompt);
+
+            onFlashcardCreation(results);
+            closeModal(); // Use smooth closing
+        } catch (error) {
+            console.error("Error generating flashcards:", error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    return (
+        <motion.div
+            layout
+            initial={{ opacity: 0, scale: 0.9, backdropFilter: "blur(0px)" }}
+            animate={{ opacity: 1, scale: 1, backdropFilter: "blur(5px)" }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            transition={{ duration: 0.3, ease: "easeInOut" }} // Increased duration for more noticeable animation
+            className="fixed inset-0 flex items-center justify-center z-50  bg-opacity-30"
+        >
+            <AnimatePresence>
+                <motion.div
+                    layout
+                    className="modal-content bg-white gap-4 dark:bg-gray-800 w-4/5 flex flex-col h-4/5 p-4 rounded-3xl shadow-xl border border-gray-300 dark:border-gray-700"
+                    initial={{ y: 50, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    exit={{ y: 50, opacity: 0 }}
+                    transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                >
+                    {/* Flashcard Modal Header */}
+                    <div className="w-full flex items-center">
+                        <h2 className="text-xl flex-1 font-bold dark:text-white">Flashcard Creator</h2>
+                        <button
+                            onClick={closeModal} // Use smooth closing
+                            className="p-1.5 material-symbols-rounded text-gray-600 dark:text-gray-300 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700"
+                            aria-label="Close modal"
+                        >
+                            close
+                        </button>
+                    </div>
+
+                    {/* Main Content Area */}
+                    <div className="flex-1 gap-4 flex w-full overflow-hidden">
+                        {/* File Upload Area */}
+                        <div className="border border-gray-300 rounded-2xl h-full p-3 flex flex-col w-1/3">
+                            <h3 className="text-md font-semibold mb-2 dark:text-gray-200">Upload Files</h3>
+                            <div className="file-upload-wrapper">
+                                <input
+                                    id="file-upload"
+                                    type="file"
+                                    multiple
+                                    onChange={(e) => {
+                                        if (e.target.files) {
+                                            Array.from(e.target.files).forEach((file) => setFiles((prevFiles) => [...prevFiles, file]));
+                                        }
+                                    }}
+                                    className="mt-1 block w-full text-sm text-gray-900 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer focus:outline-none focus:ring focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:placeholder-gray-400"
+                                />
+                            </div>
+                            {files.length > 0 && (
+                                <div className="mt-2 pt-2 border-t dark:border-gray-600 overflow-y-auto max-h-24">
+                                    <p className="text-xs font-medium dark:text-gray-300 mb-1">Files to be processed:</p>
+                                    <ul className="list-disc list-inside text-xs dark:text-gray-400">
+                                        {files.map((fileItem, index) => (
+                                            <li key={index} className="truncate">{fileItem.name}</li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Configuration/Preview Area */}
+                        <div className="flex-1 flex flex-col gap-2 border border-gray-300 rounded-2xl p-3">
+                            <p className="text-md font-semibold dark:text-gray-200">Configuration</p>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">Custom prompt (in addition to built-in prompt)</p>
+                            <textarea
+                                value={customPrompt}
+                                onChange={(e) => setCustomPrompt(e.target.value)}
+                                className="border text-black rounded-md p-2 w-full"
+                            />
+                        </div>
+                    </div>
+
+                    {/* Footer/Action Area */}
+                    <div className="dark:border-gray-700 flex justify-end">
+                        <button
+                            onClick={handleGenerateFlashcards}
+                            disabled={files.length === 0 || isLoading}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {isLoading ? "Extracting..." : "Generate Flashcards"}
+                        </button>
+                    </div>
+                </motion.div>
+            </AnimatePresence>
+        </motion.div>
+    );
+}
+
+export default FlashCardCreator;
