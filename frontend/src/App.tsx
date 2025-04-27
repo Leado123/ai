@@ -70,20 +70,17 @@ function App() {
             <motion.div
                 initial={{ width: sidebarOpen ? 200 : 50 }}
                 animate={{ width: sidebarOpen ? 200 : 50 }}
-                transition={{ duration: 0.5, type: "spring"}}
+                transition={{ duration: 0.5, type: "spring" }}
                 className="flex flex-col border-gray-200 bg-gray-100 border-r overflow-hidden"
             >
-                <div className="w-full text-4xl  p-2 rounded-md flex items-center">
+                <div className="w-full text-4xl p-2 rounded-md flex items-center">
                     <button
                         onClick={() => setSideBarOpen(!sidebarOpen)}
-                        className="text-gray-700 font-bold flex-1 w-min flex items-center justify-center pt-1 rounded-md material-symbols-rounded"
+                        className="text-gray-700 font-bold w-min flex items-center justify-center pl-1.5 pt-1 rounded-md material-symbols-rounded"
                     >
                         keyboard_command_key
                     </button>
-                    {sidebarOpen && <div className="flex-1"></div>}
-                    
                 </div>
-                
             </motion.div>
 
             {/* Main Chat Area */}
@@ -96,21 +93,10 @@ function App() {
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                 >
-                    {!sidebarOpen && (
-                        <motion.button
-                            layout
-                            initial={{ opacity: 0, width: 0 }}
-                            animate={{ opacity: 1, width: 40 }}
-                            exit={{ opacity: 0, width: 0 }}
-                            onClick={() => setSideBarOpen(!sidebarOpen)}
-                            className="text-gray-700 font-bold flex items-center justify-center rounded-md h-10 material-symbols-rounded mr-2"
-                        >
-                            left_panel_open
-                        </motion.button>
-                    )}
+                    
                     <motion.select
                         layout
-                        className="text-xl text-gray-700 h-10 font-semibold  bg-transparent border-none focus:outline-none"
+                        className="text-xl text-gray-700 h-8 font-semibold  bg-transparent border-none focus:outline-none"
                     >
                         <option>deepseek-r1</option>
                         {/* Add other model options if needed */}

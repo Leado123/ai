@@ -26,7 +26,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
 
 
     return (
-        <div className="sticky bottom-0 left-0 w-full flex justify-center p-4 bg-gradient-to-t from-gray-100 dark:from-gray-900 to-transparent"> {/* Added gradient */}
+        <div className="sticky bottom-0 left-0 w-full flex justify-center p-4 "> {/* Added gradient */}
             <div className="w-full md:w-3/4 lg:w-1/2 relative backdrop-blur-sm bg-[rgba(255,255,255,0.8)] dark:bg-[rgba(55,65,81,0.8)] p-4 border border-gray-200 dark:border-gray-700 shadow-lg rounded-3xl"> {/* Adjusted rounding */}
                 <form onSubmit={handleSendMessage} className="flex flex-col items-center gap-2">
                     {/* Input Field */}

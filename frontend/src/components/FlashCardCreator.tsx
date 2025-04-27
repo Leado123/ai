@@ -1,6 +1,9 @@
 import { useState, useCallback } from "react";
 import { AnimatePresence, motion, useIsPresent } from "framer-motion";
 import { processFilesForFlashcards } from "../assets/prompts";
+import { FilePond } from "react-filepond"
+import { FilePondFile } from "filepond";
+import "filepond/dist/filepond.css"
 
 function FlashCardCreator({
     setModalOpen,
@@ -9,7 +12,7 @@ function FlashCardCreator({
     setModalOpen: (open: boolean) => void;
     onFlashcardCreation: (fileTexts: { fileName: string; text: string }[]) => void
 }) {
-    const [files, setFiles] = useState<File[]>([]);
+    const [files, setFiles] = useState<FilePondFile[]>([]);
     const [customPrompt, setCustomPrompt] = useState("make the terms & definitions short & easy...");
     const [isLoading, setIsLoading] = useState(false);
     const isPresent = useIsPresent();
@@ -33,7 +36,8 @@ function FlashCardCreator({
 
         setIsLoading(true);
         try {
-            const results = await processFilesForFlashcards(files, customPrompt);
+            const fileObjects = files.map(filePondFile => filePondFile.file as File);
+            const results = await processFilesForFlashcards(fileObjects, customPrompt);
 
             // Generate a Quizlet-compatible flashcard prompt
             const flashcardPrompt = results.map(({ fileName, text }) => {
@@ -63,7 +67,7 @@ function FlashCardCreator({
             <AnimatePresence>
                 <motion.div
                     layout
-                    className="modal-content bg-white gap-4 dark:bg-gray-800 w-4/5 flex flex-col h-4/5 p-4 rounded-3xl shadow-xl border border-gray-300 dark:border-gray-700"
+                    className="modal-content  bg-purple-100 text-amber-700 gap-4 dark:bg-gray-800 w-4/5 flex flex-col h-4/5 p-4 rounded-3xl shadow-xl border  dark:border-gray-700"
                     initial={{ y: 50, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
                     exit={{ y: 50, opacity: 0 }}
@@ -71,7 +75,9 @@ function FlashCardCreator({
                 >
                     {/* Flashcard Modal Header */}
                     <div className="w-full flex items-center">
-                        <h2 className="text-xl flex-1 font-bold dark:text-white">Flashcard Creator</h2>
+                        <text className="text-xl flex place-items-center gap-2 flex-1 font-bold dark:text-white">
+                            <span className="material-symbols-rounded text-base">cards_star</span>
+                            Flashcard Creator</text>
                         <button
                             onClick={closeModal} // Use smooth closing
                             className="p-1.5 material-symbols-rounded text-gray-600 dark:text-gray-300 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700"
@@ -82,37 +88,25 @@ function FlashCardCreator({
                     </div>
 
                     {/* Main Content Area */}
-                    <div className="flex-1 gap-4 flex w-full overflow-hidden">
+                    <div className="flex-1 gap-4 text-black flex w-full overflow-hidden">
                         {/* File Upload Area */}
-                        <div className="border border-gray-300 rounded-2xl h-full p-3 flex flex-col w-1/3">
+                        <div className="border bg-white border-gray-300 rounded-2xl h-full p-3 flex flex-col w-1/3">
                             <h3 className="text-md font-semibold mb-2 dark:text-gray-200">Upload Files</h3>
                             <div className="file-upload-wrapper">
-                                <input
-                                    id="file-upload"
-                                    type="file"
-                                    multiple
-                                    onChange={(e) => {
-                                        if (e.target.files) {
-                                            Array.from(e.target.files).forEach((file) => setFiles((prevFiles) => [...prevFiles, file]));
-                                        }
-                                    }}
-                                    className="mt-1 block w-full text-sm text-gray-900 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer focus:outline-none focus:ring focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:placeholder-gray-400"
-                                />
+                            <FilePond
+        files={files.map(file => file.file)}
+        onupdatefiles={(fileItems) => setFiles(fileItems as FilePondFile[])}
+        allowMultiple={true}
+        maxFiles={3}
+        name="files" /* sets the file input name, it's filepond by default */
+        labelIdle='Drag & Drop your files or <span class="filepond--label-action">Browse</span>'
+      />
                             </div>
-                            {files.length > 0 && (
-                                <div className="mt-2 pt-2 border-t dark:border-gray-600 overflow-y-auto max-h-24">
-                                    <p className="text-xs font-medium dark:text-gray-300 mb-1">Files to be processed:</p>
-                                    <ul className="list-disc list-inside text-xs dark:text-gray-400">
-                                        {files.map((fileItem, index) => (
-                                            <li key={index} className="truncate">{fileItem.name}</li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            )}
+                            
                         </div>
 
                         {/* Configuration/Preview Area */}
-                        <div className="flex-1 flex flex-col gap-2 border border-gray-300 rounded-2xl p-3">
+                        <div className="flex-1 bg-white shadow-inner flex flex-col gap-2 border border-gray-300 rounded-2xl p-3">
                             <p className="text-md font-semibold dark:text-gray-200">Configuration</p>
                             <p className="text-sm text-gray-500 dark:text-gray-400">Custom prompt (in addition to built-in prompt)</p>
                             <textarea
@@ -124,7 +118,8 @@ function FlashCardCreator({
                     </div>
 
                     {/* Footer/Action Area */}
-                    <div className="dark:border-gray-700 flex justify-end">
+                    <div className="dark:border-gray-700 flex place-items-center">
+                        <text className="flex-1">courtesy of college success club, you are allowed to generate an infinite amount of flashcards all for <span className="font-black underline text-blue-500">free</span></text>
                         <button
                             onClick={handleGenerateFlashcards}
                             disabled={files.length === 0 || isLoading}

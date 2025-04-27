@@ -12,8 +12,10 @@
   "dependencies": {
     "@tailwindcss/typography": "^0.5.16",
     "@tailwindcss/vite": "^4.1.4",
+    "@types/uuid": "^10.0.0",
     "filepond": "^4.32.7",
     "motion": "^12.7.4",
+    "motion-plus": "^0.1.6",
     "office-text-extractor": "^3.0.3",
     "react": "^19.0.0",
     "react-aria-components": "^1.8.0",
