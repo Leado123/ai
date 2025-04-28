@@ -1,87 +1,100 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import io, { Socket } from 'socket.io-client';
-import { Message } from '../types'; // Import Message type
+import { Message } from '../types';
 
 const SOCKET_URL = 'http://localhost:5001'; // Your backend URL
 
+// New signature: Takes an 'onMessagesUpdate' callback
 export function useSocketManager(
-    setMessages: React.Dispatch<React.SetStateAction<Message[]>>,
+    onMessagesUpdate: (updater: (prevMessages: Message[]) => Message[]) => void,
     setIsLoading: React.Dispatch<React.SetStateAction<boolean>>,
     setError: React.Dispatch<React.SetStateAction<string | null>>,
     scrollToBottom: () => void
 ) {
     const [isConnected, setIsConnected] = useState(false);
     const socketRef = useRef<Socket | null>(null);
+    // No internal message state or messagesRef needed here
+
+    // --- Event Handlers ---
+    const handleConnect = useCallback(() => {
+        console.log(">>> SOCKET: Connected successfully!");
+        setIsConnected(true);
+        setError(null);
+    }, [setIsConnected, setError]);
+
+    const handleDisconnect = useCallback((reason: Socket.DisconnectReason) => {
+        console.log(`>>> SOCKET: Disconnected. Reason: ${reason}`);
+        setIsConnected(false);
+        if (reason === "io server disconnect") {
+            socketRef.current?.connect();
+        } else if (reason === "io client disconnect") {
+             setError("Disconnected from server.");
+        } else {
+             setError("Connection lost. Attempting to reconnect...");
+        }
+    }, [setIsConnected, setError]);
+
+    const handleConnectError = useCallback((err: Error) => {
+        console.error(`>>> SOCKET: Connection Error: ${err.message}`);
+        setIsConnected(false);
+        setError(`Connection failed: ${err.message}`);
+        setIsLoading(false);
+    }, [setIsConnected, setError, setIsLoading]);
+
+    const handleError = useCallback((data: { message: string }) => {
+        console.error(`>>> SOCKET: Server Error: ${data.message}`);
+        setError(`Server error: ${data.message}`);
+        setIsLoading(false);
+    }, [setError, setIsLoading]);
+
+    // Modified handleMessageChunk to use the callback
+    const handleMessageChunk = useCallback((data: { chunk: string }) => {
+        if (!data || typeof data.chunk !== 'string' || data.chunk.length === 0) {
+            console.log(">>> SOCKET: Received empty or invalid chunk, skipping.");
+            return;
+        }
+        // Call the provided callback with an updater function
+        onMessagesUpdate(prevMessages => {
+            const currentMessages = Array.isArray(prevMessages) ? [...prevMessages] : [];
+            const lastMessageIndex = currentMessages.length - 1;
+
+            if (lastMessageIndex >= 0 && currentMessages[lastMessageIndex].role === 'assistant') {
+                const updatedLastMessage = {
+                    ...currentMessages[lastMessageIndex],
+                    content: (currentMessages[lastMessageIndex].content || '') + data.chunk
+                };
+                return [
+                    ...currentMessages.slice(0, lastMessageIndex),
+                    updatedLastMessage
+                ];
+            } else {
+                const newMessage: Message = { role: 'assistant', content: data.chunk };
+                return [...currentMessages, newMessage];
+            }
+        });
+        requestAnimationFrame(scrollToBottom);
+    }, [onMessagesUpdate, scrollToBottom]);
+
+    // Modified handleStreamEnd
+    const handleStreamEnd = useCallback(() => {
+        console.log('>>> STREAM END.');
+        setIsLoading(false);
+        scrollToBottom();
+    }, [setIsLoading, scrollToBottom]);
 
     useEffect(() => {
-        // Initialize socket connection if not already connected
         if (!socketRef.current) {
             console.log(">>> SOCKET: Initializing connection...");
             socketRef.current = io(SOCKET_URL, {
                 transports: ["websocket"],
                 reconnectionAttempts: 5,
                 reconnectionDelayMax: 5000,
-                reconnection: true,
                 timeout: 20000
             });
         }
-
         const currentSocketInstance = socketRef.current;
 
-        // --- Event Listeners ---
-        const handleConnect = () => {
-            console.log('>>> SOCKET: Connected, ID:', currentSocketInstance.id);
-            setIsConnected(true);
-            setError(null);
-        };
-
-        const handleDisconnect = (reason: Socket.DisconnectReason) => {
-            console.log('>>> SOCKET: Disconnected, reason:', reason);
-            setIsConnected(false);
-            if (reason !== 'io client disconnect') {
-                setError('Disconnected. Trying to reconnect...');
-            }
-        };
-
-        const handleConnectError = (err: Error) => {
-            console.error('>>> SOCKET: Connection Error:', err);
-            setError(`Connection failed: ${err.message}`);
-            setIsConnected(false);
-            setIsLoading(false); // Ensure loading stops
-        };
-
-        const handleMessageChunk = (data: { chunk: string }) => {
-            // Ensure loading is true when receiving chunks
-            setIsLoading(true);
-            setMessages((prevMessages) => {
-                const lastMessage = prevMessages[prevMessages.length - 1];
-                if (lastMessage && lastMessage.role === 'assistant') {
-                    // Append chunk to the last assistant message
-                    return [
-                        ...prevMessages.slice(0, -1),
-                        { ...lastMessage, content: lastMessage.content + data.chunk },
-                    ];
-                } else {
-                    // Start a new assistant message
-                    return [...prevMessages, { role: 'assistant', content: data.chunk }];
-                }
-            });
-        };
-
-        const handleStreamEnd = () => {
-            console.log('>>> SOCKET: Received stream_end.');
-            setIsLoading(false);
-            // Ensure scroll happens after state update potentially finishes
-            requestAnimationFrame(scrollToBottom);
-        };
-
-        const handleError = (data: { message: string }) => {
-            console.error('>>> SOCKET: Received error event:', data.message);
-            setError(`Server error: ${data.message}`);
-            setIsLoading(false);
-        };
-
-        // Register listeners
+        // --- Register Event Listeners ---
         currentSocketInstance.on('connect', handleConnect);
         currentSocketInstance.on('disconnect', handleDisconnect);
         currentSocketInstance.on('connect_error', handleConnectError);
@@ -98,29 +111,26 @@ export function useSocketManager(
             currentSocketInstance.off('message_chunk', handleMessageChunk);
             currentSocketInstance.off('stream_end', handleStreamEnd);
             currentSocketInstance.off('error', handleError);
-
-            // Optional: Disconnect on final unmount if desired
-            // if (socketRef.current) {
-            //     console.log(">>> SOCKET: Disconnecting on unmount.");
-            //     socketRef.current.disconnect();
-            //     socketRef.current = null;
-            // }
         };
-        // Dependencies: Functions passed from App that might change if App re-renders unnecessarily
-        // If they are stable (defined outside or wrapped in useCallback), this is fine.
-    }, [setMessages, setIsLoading, setError, scrollToBottom]);
+    }, [handleConnect, handleDisconnect, handleConnectError, handleMessageChunk, handleStreamEnd, handleError]);
 
-    // Function to send a message via the socket
-    const sendMessage = (historyPayload: Message[]) => {
+    // sendMessage now just sends the payload
+    const sendMessage = useCallback((historyPayload: Message[]) => {
         const currentSocket = socketRef.current;
         if (currentSocket && isConnected) {
             console.log('>>> SOCKET: Emitting send_message.');
+            setIsLoading(true);
+            setError(null);
             currentSocket.emit('send_message', { history: historyPayload });
+            return true;
         } else {
             console.error(">>> SOCKET: Cannot send message, socket not ready or not connected.");
             setError("Cannot send message: Not connected.");
+            setIsLoading(false);
+            return false;
         }
-    };
+    }, [isConnected, setIsLoading, setError]);
 
+    // Return only connection status and the raw send function
     return { isConnected, sendMessage };
 }

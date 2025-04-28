@@ -47,8 +47,7 @@ def home():
 # --- Background Task for g4f ---
 def run_g4f_stream(sid, history):
     """
-    This function runs in a background thread (managed by eventlet/SocketIO)
-    to avoid blocking the main server loop.
+    This function runs in a background thread to handle AI streaming.
     """
     print(f"[{sid}] Background task started.")
     try:
@@ -70,6 +69,10 @@ def run_g4f_stream(sid, history):
         full_response = ""
         chunk_count = 0
         stream_finished_reason = None
+        
+        # Add a buffer to accumulate chunks for smoother delivery
+        chunk_buffer = ""
+        last_emit_time = time.time()
 
         for chunk in response_stream:
             chunk_count += 1
@@ -79,10 +82,19 @@ def run_g4f_stream(sid, history):
                 chunk_content = chunk.choices[0].delta.content
                 if isinstance(chunk_content, str):
                     full_response += chunk_content
-                    # Use socketio.emit to send back to the specific client
-                    socketio.emit('message_chunk', {'chunk': chunk_content}, room=sid)
-                    # Use eventlet.sleep in background task too
-                    eventlet.sleep(0.01)
+                    chunk_buffer += chunk_content
+                    
+                    # Emit chunks in reasonable sizes or after a time threshold
+                    current_time = time.time()
+                    if len(chunk_buffer) >= 5 or current_time - last_emit_time >= 0.1:
+                        # Send the accumulated buffer
+                        socketio.emit('message_chunk', {'chunk': chunk_buffer}, room=sid)
+                        print(f"[{sid}] Emitted chunk: {len(chunk_buffer)} chars")
+                        # Clear buffer and update timestamp
+                        chunk_buffer = ""
+                        last_emit_time = current_time
+                        # Small delay to let the frontend process
+                        eventlet.sleep(0.01)
                 else:
                     print(f"[{sid}] Background task: Skipping non-string chunk content type: {type(chunk_content)}")
             elif finish_reason:
@@ -92,7 +104,16 @@ def run_g4f_stream(sid, history):
             else:
                 pass # Skip other chunk types
 
+        # Emit any remaining content in the buffer
+        if chunk_buffer:
+            socketio.emit('message_chunk', {'chunk': chunk_buffer}, room=sid)
+            print(f"[{sid}] Emitted final chunk: {len(chunk_buffer)} chars")
+
         print(f"[{sid}] Background task: Stream loop finished. Reason: {'Natural end' if not stream_finished_reason else stream_finished_reason}. Chunks processed: {chunk_count}.")
+        
+        # Print the full assembled response
+        print(f"[{sid}] Full assembled assistant response:\n{full_response}\n")
+
         # Use socketio.emit to send stream_end
         socketio.emit('stream_end', room=sid)
         print(f"[{sid}] Background task: 'stream_end' emitted.")
