@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { Message } from '../types';
-import { motion } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import Marquee from "react-fast-marquee"
 

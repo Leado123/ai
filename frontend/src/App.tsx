@@ -1,4 +1,4 @@
-import React, { useRef, FormEvent, useState, useEffect, useCallback, MouseEvent } from 'react'; // Added MouseEvent
+import { useRef, FormEvent, useState,useCallback, MouseEvent } from 'react'; // Added MouseEvent
 import { AnimatePresence, motion } from "framer-motion";
 import { useSocketManager } from './hooks/useSocketManager';
 import useConversations from './hooks/useConversations'; // Import useConversations
@@ -27,7 +27,7 @@ function App() {
         createConversation,
         updateConversationMessages,
         removeConversation,
-        updateConversationTitle // Added for potential use
+         // Added for potential use
     } = useConversations();
 
     const scrollToBottom = () => {

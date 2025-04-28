@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { AnimatePresence, motion, useIsPresent } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { processFilesForFlashcards } from "../assets/prompts";
 import { FilePond } from "react-filepond"
 import { FilePondFile } from "filepond";
@@ -15,7 +15,6 @@ function FlashCardCreator({
     const [files, setFiles] = useState<FilePondFile[]>([]);
     const [customPrompt, setCustomPrompt] = useState("make the terms & definitions short & easy...");
     const [isLoading, setIsLoading] = useState(false);
-    const isPresent = useIsPresent();
 
     // Function for smooth closing with animation
     const closeModal = useCallback(() => {

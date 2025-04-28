@@ -1,5 +1,5 @@
 import React, { FormEvent } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { Button, Menu, MenuItem, MenuTrigger, Popover } from 'react-aria-components';
 
 interface ChatInputProps {
@@ -20,7 +20,6 @@ const ChatInput: React.FC<ChatInputProps> = ({
     isLoading,
     isConnected,
     error,
-    flashcardModalOpen,
     setFlashcardModalOpen
 }) => {
 

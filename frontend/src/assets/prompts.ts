@@ -241,6 +241,7 @@ export const processFilesForFlashcards = async (
                 return { fileName: file.name, text };
             })
         );
+        console.log(customPrompt)
         
         // If we have a custom prompt, we could send it along with the extracted text
         // to generate flashcards - not implementing this part yet

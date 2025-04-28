@@ -6,10 +6,7 @@ import {
   Message,
   getConversations,
   saveConversations, // Assuming this saves the whole array
-  addConversation,    // Assuming this adds one and saves
-  updateConversation, // Assuming this updates one and saves
-  deleteConversation, // Assuming this deletes one and saves
-  getConversationById // Assuming this gets one (might not be needed if state is source of truth)
+// Assuming this gets one (might not be needed if state is source of truth)
 } from '../types';
 
 export default function useConversations() {
