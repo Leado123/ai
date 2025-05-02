@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { io, Socket } from "socket.io-client";
 
 // Define the WebSocket server URL
-const SOCKET_SERVER_URL = "http://localhost:5001";
+const SOCKET_SERVER_URL = "https://api.sharesyllabus.me";
 
 // Define the Message type
 export interface Message {
@@ -58,7 +58,7 @@ export const sendFileToServer = async (file: File): Promise<string> => {
     const formData = new FormData();
     formData.append("file", file);
 
-    const response = await fetch(`${SOCKET_SERVER_URL}/extract_text`, {
+    const response = await fetch(`https://api.sharesyllabus.me/flask/extract_text`, {
         method: "POST",
         body: formData,
     });
@@ -98,7 +98,8 @@ export function useMessages(initialSystemMessage: string, onScrollToBottom?: () 
                 reconnectionAttempts: 5,
                 reconnectionDelayMax: 5000,
                 reconnection: true,
-                timeout: 20000
+                timeout: 20000,
+                path: "/ws/socket.io"
             });
         }
 

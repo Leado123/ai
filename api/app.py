@@ -1,22 +1,21 @@
 import os
 import uuid
-import eventlet # Required for Flask-SocketIO production/async modes
+import eventlet  # Required for Flask-SocketIO production/async modes
 # Monkey patch MUST be done before other imports like Flask, SocketIO, etc.
 eventlet.monkey_patch()
 
 import kreuzberg
-import traceback # Add this import at the top
+import traceback
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 from g4f.client import Client
-from g4f.Provider import PollinationsAI, RetryProvider, bing, You, GeminiPro
+from g4f.Provider import PollinationsAI, RetryProvider, GeminiPro
 import logging
-import time # Import time if not already
+import time
 
 # --- g4f Client Setup ---
 try:
-    # Initialize the g4f client once when the app starts
     gemini_api_key = os.getenv("GEMINI_API_KEY")
     if not gemini_api_key:
         raise EnvironmentError("GEMINI_API_KEY environment variable is not set.")
@@ -28,112 +27,24 @@ try:
     print("g4f Client initialized successfully.")
 except Exception as e:
     print(f"Fatal Error initializing g4f Client: {e}")
-    # If the client fails to initialize, the app shouldn't run.
     client = None
 
 # --- Flask App Setup ---
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'your_secret_key!' # Replace with a real secret key
-CORS(app, resources={r"/*": {"origins": "*"}})# Initialize SocketIO, using eventlet for async mode
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+app.config['SECRET_KEY'] = 'your_secret_key!'  # Replace with a real secret key
+CORS(app, resources={r"/flask/*": {"origins": "*"}})  # Restrict CORS to /flask prefix
 
-# --- API Routes ---
-@app.route("/")
+# Initialize SocketIO, using eventlet for async mode
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', path="/ws")
+
+# --- API Routes (under /flask prefix) ---
+@app.route("/flask/")
 def home():
     if not client:
         return "Flask backend: g4f client failed to initialize!", 503
     return "Flask backend with g4f and SocketIO is running!"
 
-# --- Background Task for g4f ---
-def run_g4f_stream(sid, history):
-    """
-    This function runs in a background thread to handle AI streaming.
-    """
-    print(f"[{sid}] Background task started.")
-    try:
-        # Create a NEW client instance for each request
-        request_client = Client(
-            provider=RetryProvider([PollinationsAI], single_provider_retry=True, max_retries=5)
-        )
-        print(f"[{sid}] Created new g4f client instance for this request.")
-
-        print(f"[{sid}] Background task: Attempting g4f stream creation...")
-        response_stream = request_client.chat.completions.create(
-            model="gemini-2.0-flash",
-            messages=history,
-            stream=True,
-            web_search=False
-        )
-        print(f"[{sid}] Background task: g4f stream object created. Starting iteration...")
-
-        full_response = ""
-        chunk_count = 0
-        stream_finished_reason = None
-        
-        # Add a buffer to accumulate chunks for smoother delivery
-        chunk_buffer = ""
-        last_emit_time = time.time()
-
-        for chunk in response_stream:
-            chunk_count += 1
-            finish_reason = chunk.choices[0].finish_reason if chunk.choices and chunk.choices[0].finish_reason else None
-
-            if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
-                chunk_content = chunk.choices[0].delta.content
-                if isinstance(chunk_content, str):
-                    full_response += chunk_content
-                    chunk_buffer += chunk_content
-                    
-                    # Emit chunks in reasonable sizes or after a time threshold
-                    current_time = time.time()
-                    if len(chunk_buffer) >= 5 or current_time - last_emit_time >= 0.1:
-                        # Send the accumulated buffer
-                        socketio.emit('message_chunk', {'chunk': chunk_buffer}, room=sid)
-                        print(f"[{sid}] Emitted chunk: {len(chunk_buffer)} chars")
-                        # Clear buffer and update timestamp
-                        chunk_buffer = ""
-                        last_emit_time = current_time
-                        # Small delay to let the frontend process
-                        eventlet.sleep(0.01)
-                else:
-                    print(f"[{sid}] Background task: Skipping non-string chunk content type: {type(chunk_content)}")
-            elif finish_reason:
-                stream_finished_reason = finish_reason
-                print(f"[{sid}] Background task: Finish reason received: '{stream_finished_reason}'. Breaking loop.")
-                break
-            else:
-                pass # Skip other chunk types
-
-        # Emit any remaining content in the buffer
-        if chunk_buffer:
-            socketio.emit('message_chunk', {'chunk': chunk_buffer}, room=sid)
-            print(f"[{sid}] Emitted final chunk: {len(chunk_buffer)} chars")
-
-        print(f"[{sid}] Background task: Stream loop finished. Reason: {'Natural end' if not stream_finished_reason else stream_finished_reason}. Chunks processed: {chunk_count}.")
-        
-        # Print the full assembled response
-        print(f"[{sid}] Full assembled assistant response:\n{full_response}\n")
-
-        # Use socketio.emit to send stream_end
-        socketio.emit('stream_end', room=sid)
-        print(f"[{sid}] Background task: 'stream_end' emitted.")
-
-    except Exception as e:
-        error_traceback = traceback.format_exc()
-        print(f"!!! [{sid}] Background task ERROR: {e}\n{error_traceback}")
-        # Use socketio.emit for errors
-        socketio.emit('error', {'message': f"An error occurred during streaming: {e}"}, room=sid)
-    finally:
-        print(f"[{sid}] Background task finished.")
-
-# --- SocketIO Event Handlers ---
-@socketio.on('connect')
-def handle_connect():
-    sid = request.sid
-    print(f"Client connected: {sid}")
-
-
-@app.route("/extract_text", methods=["POST"])
+@app.route("/flask/extract_text", methods=["POST"])
 def extract_text_route():
     """
     Accepts a single file, uses Kreuzberg to extract text, 
@@ -146,16 +57,13 @@ def extract_text_route():
     if file.filename == "":
         return jsonify({"error": "Empty filename"}), 400
 
-    # Generate a temporary filename
     temp_filename = f"tmp_{uuid.uuid4()}_{file.filename}"
     temp_path = os.path.join("/tmp", temp_filename)
 
     try:
-        # Save file to server temporarily
         file.save(temp_path)
         print(f"File received: {file.filename}, saved as {temp_path}")
 
-        # Simulate Kreuzberg text extraction
         extracted_text = kreuzberg.extract_file_sync(temp_path)
         print(f"Extracted text: {extracted_text}")
 
@@ -167,11 +75,15 @@ def extract_text_route():
         return jsonify({"error": error_message}), 500
 
     finally:
-        # Delete the temporary file even if extraction fails
         if os.path.exists(temp_path):
             os.remove(temp_path)
             print(f"Temporary file deleted: {temp_path}")
 
+# --- SocketIO Event Handlers (under /ws path) ---
+@socketio.on('connect')
+def handle_connect():
+    sid = request.sid
+    print(f"Client connected: {sid}")
 
 @socketio.on('disconnect')
 def handle_disconnect():
@@ -180,10 +92,9 @@ def handle_disconnect():
 
 @socketio.on('send_message')
 def handle_send_message(data):
-    sid = request.sid # Get SID
+    sid = request.sid
     print(f"[{sid}] Received 'send_message'. Validating...")
 
-    # --- Input Validation ---
     if not isinstance(data, dict) or 'history' not in data:
         emit('error', {'message': "'history' is required in message data."})
         return
@@ -198,21 +109,63 @@ def handle_send_message(data):
     if conversation_history[-1].get("role") != "user":
         emit('error', {'message': "Last message must be from 'user'"})
         return
-    # --- End Input Validation ---
 
     print(f"[{sid}] Validation passed. Starting background task for g4f stream.")
-
-    # Start the blocking g4f interaction in a background task
     socketio.start_background_task(run_g4f_stream, sid, conversation_history)
-
-    # Return immediately - the main handler is now non-blocking
     print(f"[{sid}] handle_send_message finished (background task started).")
+
+# --- Background Task for g4f ---
+def run_g4f_stream(sid, history):
+    print(f"[{sid}] Background task started.")
+    try:
+        request_client = Client(
+            provider=RetryProvider([PollinationsAI], single_provider_retry=True, max_retries=5)
+        )
+        print(f"[{sid}] Created new g4f client instance for this request.")
+
+        response_stream = request_client.chat.completions.create(
+            model="gemini-2.0-flash",
+            messages=history,
+            stream=True,
+            web_search=False
+        )
+        print(f"[{sid}] Background task: g4f stream object created. Starting iteration...")
+
+        full_response = ""
+        chunk_buffer = ""
+        last_emit_time = time.time()
+
+        for chunk in response_stream:
+            if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
+                chunk_content = chunk.choices[0].delta.content
+                if isinstance(chunk_content, str):
+                    full_response += chunk_content
+                    chunk_buffer += chunk_content
+
+                    current_time = time.time()
+                    if len(chunk_buffer) >= 5 or current_time - last_emit_time >= 0.1:
+                        socketio.emit('message_chunk', {'chunk': chunk_buffer}, room=sid)
+                        chunk_buffer = ""
+                        last_emit_time = current_time
+                        eventlet.sleep(0.01)
+
+        if chunk_buffer:
+            socketio.emit('message_chunk', {'chunk': chunk_buffer}, room=sid)
+
+        socketio.emit('stream_end', room=sid)
+        print(f"[{sid}] Full response: {full_response}")
+
+    except Exception as e:
+        error_traceback = traceback.format_exc()
+        print(f"!!! [{sid}] Background task ERROR: {e}\n{error_traceback}")
+        socketio.emit('error', {'message': f"An error occurred: {e}"}, room=sid)
+    finally:
+        print(f"[{sid}] Background task finished.")
 
 # --- Run Flask App with SocketIO ---
 if __name__ == "__main__":
     if client:
         print("Starting Flask-SocketIO server...")
-        # Run WITHOUT debug mode for this test
         socketio.run(app, debug=False, port=5001, host='0.0.0.0')
     else:
         print("Flask app cannot start because g4f client failed to initialize.")

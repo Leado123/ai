@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import io, { Socket } from 'socket.io-client';
 import { Message } from '../types';
 
-const SOCKET_URL = 'http://localhost:5001'; // Your backend URL
+const SOCKET_URL = 'https://api.sharesyllabus.me'; // Your backend URL
 
 // New signature: Takes an 'onMessagesUpdate' callback
 export function useSocketManager(

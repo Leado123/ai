@@ -1,0 +1,6 @@
+Flask
+eventlet
+kreuzberg
+flask_cors
+g4f
+flask_socketio
