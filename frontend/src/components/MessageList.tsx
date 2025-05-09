@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Message } from '../types';
 import ReactMarkdown from 'react-markdown';
 import Marquee from "react-fast-marquee";
-import { motion } from 'framer-motion';
 
 interface MessageListProps {
     messages: Message[];
