@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Message } from '../types';
 import ReactMarkdown from 'react-markdown';
-import Marquee from "react-fast-marquee"
+import Marquee from "react-fast-marquee";
+import { motion } from 'framer-motion';
 
 interface MessageListProps {
     messages: Message[];
@@ -19,6 +20,8 @@ const MessageList: React.FC<MessageListProps> = ({
     conversationType, // Destructure conversationType
 }) => {
     const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
+    const [isUserScrolling, setIsUserScrolling] = useState(false);
+    const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
     const toggleSection = (id: string) => {
         setExpandedSections(prev => ({
@@ -27,9 +30,30 @@ const MessageList: React.FC<MessageListProps> = ({
         }));
     };
 
+    // Handle user scrolling
+    const handleScroll = () => {
+        if (!scrollContainerRef.current) return;
+
+        const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
+        const isAtBottom = scrollHeight - scrollTop === clientHeight;
+
+        setIsUserScrolling(!isAtBottom); // If not at the bottom, user is scrolling
+    };
+
+    // Automatically scroll to the bottom if the user is not actively scrolling
+    useEffect(() => {
+        if (!isUserScrolling && messagesEndRef.current) {
+            messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [messages, isUserScrolling, messagesEndRef]);
+
     return (
-        <div className="flex-1 flex flex-col place-items-center overflow-y-auto h-full w-full">
-            <div className="flex-1 w-4/5 pb-4">
+        <div
+            className="flex-1 flex flex-col pt-20 place-items-center overflow-y-auto h-full w-full"
+            ref={scrollContainerRef}
+            onScroll={handleScroll}
+        >
+            <div className="flex-1 h-full w-3/5 pb-4">
                 {messages.map((message, index) => {
                     if (message.role === 'system') return null;
 
@@ -43,7 +67,7 @@ const MessageList: React.FC<MessageListProps> = ({
                                 key={messageId}
                                 className="flex justify-end mb-4"
                             >
-                                <div className="max-w-3/4 p-3 text-lg border-gray-200 rounded-3xl bg-yellow-50 text-black border">
+                                <div className=" p-3 text-lg border-gray-200 rounded-3xl bg-yellow-50 text-black border">
                                     <div className="font-bold mb-2">file(s) data for creating flashcard:</div>
 
                                     <div className="bg-blue-700 font-bold rounded-full text-white flex w-full">
@@ -55,25 +79,22 @@ const MessageList: React.FC<MessageListProps> = ({
                     }
 
                     return (
-                        <div
-                            key={messageId}
-                            className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`}
-                        >
+                        <div className="justify-items-end">
                             <div
-                                className={`max-w-3/4 p-3 text-lg border-gray-200 rounded-3xl ${isUser
-                                    ? 'bg-blue-50 text-black text-bold border'
+                                className={` p-3 border-gray-200 rounded-3xl ${isUser
+                                    ? 'bg-blue-50 max-w-3/4 text-end justify-end text-black text-bold border'
                                     : ' dark:bg-gray-700 dark:text-white'
                                     }`}
                             >
                                 {message.role === 'assistant' ? (
-                                    <div className="whitespace-pre-wrap text-slate-800 text-2xl">
+                                    <div className="whitespace-pre-wrap text-black text-lg">
                                         {typeof message.content === 'string' ? (
                                             <ReactMarkdown
                                                 components={{
                                                     ol: ({ children, ...props }) => (
                                                         <ol
                                                             {...props}
-                                                            className="list-decimal pl-6 m-0 space-y-1"
+                                                            className=""
                                                         >
                                                             {children}
                                                         </ol>
@@ -81,7 +102,7 @@ const MessageList: React.FC<MessageListProps> = ({
                                                     ul: ({ children, ...props }) => (
                                                         <ul
                                                             {...props}
-                                                            className="list-disc pl-6 m-0 space-y-1"
+                                                            className=""
                                                         >
                                                             {children}
                                                         </ul>
@@ -97,7 +118,7 @@ const MessageList: React.FC<MessageListProps> = ({
                                         )}
                                     </div>
                                 ) : (
-                                    <div className="whitespace-pre-wrap flex flex-col">
+                                    <div className="whitespace-pre-wrap flex justify-end text-end flex-col max-w-max ml-auto">
                                         {typeof message.content === 'string'
                                             ? message.content.split(/({.*?})/).map((part, i) => {
                                                 const partId = `${messageId}-part-${i}`;
@@ -147,7 +168,7 @@ const MessageList: React.FC<MessageListProps> = ({
                     </div>
                 )}
 
-                <div className="h-32" ref={messagesEndRef}></div>
+                <div className="h-50" ref={messagesEndRef}></div>
             </div>
         </div>
     );

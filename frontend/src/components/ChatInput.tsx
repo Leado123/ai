@@ -25,18 +25,28 @@ const ChatInput: React.FC<ChatInputProps> = ({
 
 
     return (
-        <div className="sticky bottom-0 left-0 w-full flex justify-center p-4 "> {/* Added gradient */}
-            <div className="w-full md:w-3/4 lg:w-1/2 relative backdrop-blur-sm bg-[rgba(255,255,255,0.8)] dark:bg-[rgba(55,65,81,0.8)] p-4 border border-gray-200 dark:border-gray-700 shadow-lg rounded-3xl"> {/* Adjusted rounding */}
-                <form onSubmit={handleSendMessage} className="flex flex-col items-center gap-2">
-                    {/* Input Field */}
-                    <input
-                        type="text"
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        placeholder={isConnected ? "Type your message..." : "Connecting..."}
-                        disabled={!isConnected || isLoading}
-                        className="w-full p-2 focus:outline-none bg-transparent dark:text-white placeholder-gray-500 dark:placeholder-gray-400" // Added placeholder styles
-                    />
+        <div className="sticky bottom-0 left-0 w-full flex justify-center p-4">
+            <div className="w-full md:w-3/4 lg:w-1/2 relative backdrop-blur-sm bg-[rgba(255,255,255,0.8)] dark:bg-[rgba(55,65,81,0.8)] p-4 border border-gray-300 dark:border-gray-700 shadow-lg rounded-4xl">
+            <form onSubmit={handleSendMessage} className="flex flex-col items-center gap-2">
+                {/* Input Field */}
+                <textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder={isConnected ? "Type your message..." : "Connecting..."}
+                disabled={!isConnected || isLoading}
+                className="w-full p-2 focus:outline-none bg-transparent dark:text-white placeholder-gray-500 dark:placeholder-gray-400 resize-none overflow-y-auto"
+                rows={1}
+                style={{
+                    lineHeight: "1.5",
+                    maxHeight: "150px", // Maximum height for the textarea
+                    height: "auto", // Allow auto height adjustment
+                }}
+                onInput={(e) => {
+                    const target = e.target as HTMLTextAreaElement;
+                    target.style.height = "auto"; // Reset height to auto
+                    target.style.height = `${Math.min(target.scrollHeight, 150)}px`; // Adjust height dynamically
+                }}
+                />
                     {/* Buttons Row */}
                     <div className="flex w-full text-gray-500 dark:text-gray-400 gap-2 items-center">
                         {/* Attachment Menu */}
@@ -74,12 +84,28 @@ const ChatInput: React.FC<ChatInputProps> = ({
                                 initial={{ opacity: 0, x: -20 }}
                                 animate={{ opacity: 1, x: 0 }}
                                 transition={{ duration: 0.3, ease: "circInOut" }}
+                                className="bg-black text-white flex items-center font-semibold  p-2 rounded-full border border-yellow-500 gap-1 hover:bg-slate-950 cursor-pointer text-sm whitespace-nowrap" // Added whitespace-nowrap
+                            >
+                                <span className="material-symbols-rounded text-base">language</span>
+                                Research
+                            </motion.button>
+
+                            <motion.button
+                                type="button" // Prevent form submission
+                                layout
+                                onClick={() => setFlashcardModalOpen(true)}
+                                initial={{ opacity: 0, x: -20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                transition={{ duration: 0.3, ease: "circInOut" }}
                                 className="bg-blue-600 text-white flex items-center p-2 rounded-full border border-blue-700 font-semibold gap-1 hover:bg-blue-700 cursor-pointer text-sm whitespace-nowrap" // Added whitespace-nowrap
                             >
                                 <span className="material-symbols-rounded text-base">cards_star</span>
-                                flashcards maker
+                                Quizlet/Knowt Maker
                             </motion.button>
                             {/* Add other buttons similarly */}
+
+                            
+
                         </motion.div>
 
                         <div className="flex-1"></div> {/* Spacer */}

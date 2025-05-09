@@ -1,4 +1,4 @@
-import { useRef, FormEvent, useState,useCallback, MouseEvent } from 'react'; // Added MouseEvent
+import { useRef, FormEvent, useState,useCallback, MouseEvent, useEffect } from 'react'; // Added MouseEvent
 import { AnimatePresence, motion } from "framer-motion";
 import { useSocketManager } from './hooks/useSocketManager';
 import useConversations from './hooks/useConversations'; // Import useConversations
@@ -157,14 +157,14 @@ function App() {
     };
 
     // Determine messages to display based on current conversation
-    const displayMessages = currentConversation?.messages ?? [];
+    const [displayMessages, setDisplayMessages] = useState<Message[]>(currentConversation?.messages ?? []);
+
+    useEffect(() => {
+        setDisplayMessages(currentConversation?.messages ?? []);
+    }, [currentConversation]);
 
     // Determine if initial cards should be shown
     // Show cards if no conversation is selected OR if the current one is 'normal' and only has the system message
-    const showInitialCards = !currentConversationId ||
-                             (currentConversation?.type === 'normal' &&
-                              currentConversation.messages.length <= 1 &&
-                              (currentConversation.messages.length === 0 || currentConversation.messages[0].role === 'system'));
 
 
     // --- Render JSX ---
@@ -172,8 +172,8 @@ function App() {
         <div className="flex w-screen h-screen bg-white dark:bg-gray-900"> {/* Added base background */}
             {/* Sidebar */}
             <motion.div
-                initial={{ width: sidebarOpen ? "20em" : "3.25em" }}
-                animate={{ width: sidebarOpen ? "20em" : "3.25em" }}
+                initial={{ width: sidebarOpen ? "15em" : "3.25em" }}
+                animate={{ width: sidebarOpen ? "15em" : "3.25em" }}
                 transition={{ duration: 0.3, type: "spring", stiffness: 400, damping: 35 }}
                 className="flex p-1 flex-col border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 border-r overflow-hidden h-full flex-shrink-0"
             >
@@ -254,37 +254,7 @@ function App() {
                 </motion.div>
 
                 {/* Message Display Area */}
-                <div className="flex-1 overflow-y-auto pb-24"> {/* Ensure this scrolls */}
-                    {showInitialCards ? (
-                        <div className="flex-1 overflow-y-auto">
-                            {/* ... Initial Cards View (as before) ... */}
-                             <div className="flex place-items-center w-full h-full justify-center">
-                                <motion.div
-                                    className="grid grid-cols-2 w-full md:w-3/4 lg:w-1/2 gap-4"
-                                    initial="hidden" animate="visible" variants={{ /* ... */ }}
-                                >
-                                    {[
-                                        { title: "Flashcards Maker", description: "Create flashcards for studying.", icon: "cards_star", type: "flashcard" },
-                                        { title: "Deep Research", description: "Conduct in-depth research.", icon: "history_edu", type: "research" },
-                                        { title: "Writing Helper", description: "Get assistance with writing tasks.", icon: "stylus_note", type: "normal" },
-                                        { title: "Custom Tool", description: "Explore custom functionalities.", icon: "star", type: "custom" },
-                                    ].map((card, index) => (
-                                        <motion.div
-                                            key={index}
-                                            onClick={() => createNewConversation(card.type as ConversationType)} // Use updated function
-                                            className="p-4 rounded-lg shadow-inner bg-gray-50 dark:bg-gray-700 cursor-pointer aspect-square flex flex-col justify-center items-center text-center"
-                                            variants={{ /* ... */ }} whileHover={{ /* ... */ }}
-                                        >
-                                            <span className="material-symbols-rounded text-4xl mb-2 text-gray-700 dark:text-gray-300">{card.icon}</span>
-                                            <h3 className="text-lg font-bold text-gray-900 dark:text-white">{card.title}</h3>
-                                            <p className="text-sm text-gray-600 dark:text-gray-400">{card.description}</p>
-                                        </motion.div>
-                                    ))}
-                                </motion.div>
-                            </div>
-                        </div>
-                    ) : (
-                        // Pass messages from the current conversation
+                <div className="flex-1 h-full"> {/* Ensure this scrolls */}
                         <MessageList
                             messages={displayMessages.filter(m => m.role !== 'system')}
                             messagesEndRef={messagesEndRef}
@@ -292,20 +262,68 @@ function App() {
                             isConnected={isConnected}
                             conversationType={currentConversation?.type || 'normal'}
                         />
-                    )}
                     {/* Debugging info */}
                     
                 </div>
 
                 {/* Thinking Indicator */}
-                {isLoading && isConnected && (
-                    <div className="p-2 text-center text-gray-500 dark:text-gray-400 text-sm flex-shrink-0"> {/* Adjusted padding/size */}
-                        Assistant is thinking...
-                    </div>
-                )}
+                
 
                 {/* Input Area */}
-                <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-white dark:from-gray-900 to-transparent z-10"> {/* Ensure it's above messages */}
+                <motion.div
+                    layout
+                    className={`absolute left-0  right-0 p-4 z-10 ${
+                        displayMessages.length < 2 ? 'bottom-1/3' : 'bottom-0'
+                    }`}
+                >
+                    {displayMessages.length < 2 && 
+                    <div className="w-full flex flex-col">
+                        <motion.div
+                            className="flex justify-center"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            transition={{ duration: 1 }}
+                        >
+                            <motion.img
+                                src="logo_big.png"
+                                width="200"
+                                height="200"
+                                className=""
+                                animate={{ rotateY: [0, 180], rotateX: [0, 180] }}
+                                transition={{
+                                    duration: 0.5,
+                                    ease: [0.39, 0.24, 0.3, 1],
+                                }}
+                            />
+                        </motion.div>
+                        <motion.div
+                        className="w-full font-black text-3xl flex place-items-center justify-center"
+                        initial="hidden"
+                        animate="visible"
+                        variants={{
+                            hidden: { opacity: 0 },
+                            visible: {
+                                opacity: 1,
+                                transition: {
+                                    staggerChildren: 0.1,
+                                },
+                            },
+                        }}
+                    >
+                        {["the", "best", "ai", "tools", "for", "students,", "completely", "free!"].map((word, index) => (
+                            <motion.span
+                                key={index}
+                                className="inline-block"
+                                variants={{
+                                    hidden: { opacity: 0, y: 20 },
+                                    visible: { opacity: 1, y: 0 },
+                                }}
+                            >
+                                {word}&nbsp;
+                            </motion.span>
+                        ))}
+                        </motion.div>
+                    </div>}
                     <ChatInput
                         input={input}
                         setInput={setInput}
@@ -316,7 +334,7 @@ function App() {
                         flashcardModalOpen={flashcardModalOpen}
                         setFlashcardModalOpen={setFlashcardModalOpen}
                     />
-                </div>
+                </motion.div>
             </div>
 
             {/* Flashcard Creator Modal */}
