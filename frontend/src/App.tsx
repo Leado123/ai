@@ -1,4 +1,4 @@
-import { useRef, FormEvent, useState,useCallback, MouseEvent, useEffect } from 'react'; // Added MouseEvent
+import { useRef, FormEvent, useState, useCallback, MouseEvent, useEffect } from 'react'; // Added MouseEvent
 import { AnimatePresence, motion } from "framer-motion";
 import { useSocketManager } from './hooks/useSocketManager';
 import useConversations from './hooks/useConversations'; // Import useConversations
@@ -8,17 +8,21 @@ import FlashCardCreator from './components/FlashCardCreator';
 import ChatInput from './components/ChatInput';
 import MessageList from './components/MessageList';
 import { addSystemMessage, addUserMessage } from './assets/prompts'; // Import message helpers
+import { PanelLeft, Sparkles, SquarePen } from "lucide-react";
 
 function App() {
-    const initialSystemMessage = "You are a helpful assistant. Your name is sharesyllabus.me ai...";
-    const messagesEndRef = useRef<null | HTMLDivElement>(null);
+    const initialSystemMessage = "You are a helpful assistant. Your name is sharesyllabus.me ai. When you want to put a header, put a #, ##, ###, or similar for markdown interpreters. Headers should start with an emoji before the words, and avoid using numbers on headers. Also DO NOT use excessive line spaces (backslash n), use a line breaker instead when necessary.";
+    // --- Refs for scrolling ---
+    const messagesEndRef = useRef<HTMLDivElement | null>(null); // Ref for the target div at the end of MessageList
+    const chatContainerRef = useRef<HTMLDivElement | null>(null); // Ref for the scrollable messages container in App.tsx
+
     const [input, setInput] = useState('');
     const [sidebarOpen, setSideBarOpen] = useState(true);
     const [flashcardModalOpen, setFlashcardModalOpen] = useState(false);
+    const [useResearch, setUseResearch] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    // --- Use Conversations Hook ---
     const {
         conversations,
         currentConversationId,
@@ -27,31 +31,37 @@ function App() {
         createConversation,
         updateConversationMessages,
         removeConversation,
-         // Added for potential use
     } = useConversations();
 
-    const scrollToBottom = () => {
+    
+
+    // --- Scroll to Bottom Logic ---
+    const scrollToBottom = useCallback(() => {
         requestAnimationFrame(() => {
-            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+            if (messagesEndRef.current) {
+                console.log('[ScrollToBottom] Attempting scrollIntoView on messagesEndRef');
+                messagesEndRef.current.scrollIntoView({ behavior: 'auto' }); // 'auto' for instant scroll
+            } else {
+                console.log('[ScrollToBottom] messagesEndRef.current is null. Ensure MessageList is rendered and ref is passed.');
+            }
         });
-    };
+    }, []); // messagesEndRef is a ref, its .current value changes don't trigger useCallback re-creation
 
     // --- Define Callback for Socket Manager ---
     const handleMessagesUpdate = useCallback((updater: (prevMessages: Message[]) => Message[]) => {
         if (currentConversationId) {
-            // Pass the updater function directly to the conversation hook's update function
-            updateConversationMessages(currentConversationId, updater); // This line passes the updater function
+            updateConversationMessages(currentConversationId, updater);
         } else {
-            console.warn("handleMessagesUpdate called but no currentConversationId is set.");
+            console.warn("[App] handleMessagesUpdate called but no currentConversationId is set.");
         }
-    }, [currentConversationId, updateConversationMessages]); // Dependencies
+    }, [currentConversationId, updateConversationMessages]);
 
     // --- Use Socket Manager with Callback ---
     const { isConnected, sendMessage: sendSocketMessage } = useSocketManager(
-        handleMessagesUpdate, // Pass the callback
+        handleMessagesUpdate,
         setIsLoading,
         setError,
-        scrollToBottom
+        scrollToBottom // Pass App.tsx's scrollToBottom
     );
 
     // --- Handle Sending User Message ---
@@ -63,119 +73,106 @@ function App() {
         let targetConversationId = currentConversationId;
         let messagesForSocket: Message[];
 
-        // If no conversation is active, create one first
         if (!targetConversationId) {
-            console.log("No active conversation, creating new one...");
-            const newId = createConversation('normal', trimmedInput.substring(0, 30), [ // Use first part of input as title
+            const newId = createConversation('normal', trimmedInput.substring(0, 30), [
                 { role: 'system', content: initialSystemMessage },
                 { role: 'user', content: trimmedInput }
             ]);
-            setCurrentConversationId(newId); // Set it as current
+            setCurrentConversationId(newId);
             targetConversationId = newId;
-            // Messages are already set in createConversation, prepare for socket
             messagesForSocket = [
                 { role: 'system', content: initialSystemMessage },
                 { role: 'user', content: trimmedInput }
             ];
-            console.log("New conversation created and set as current:", newId);
         } else if (currentConversation) {
-            // Add message to existing conversation
             const userMessage: Message = { role: 'user', content: trimmedInput };
-            // Use functional update for safety, though direct array might work here
             updateConversationMessages(targetConversationId, (prevMessages) => [...prevMessages, userMessage]);
-            // Prepare messages for socket based on the *expected* next state
             messagesForSocket = [...currentConversation.messages, userMessage];
         } else {
-            console.error("Current conversation ID set but conversation not found.");
             setError("Error sending message: Conversation context lost.");
-            return; // Should not happen ideally
+            return;
         }
 
-        // Send the prepared history to the server
         if (sendSocketMessage(messagesForSocket)) {
-            setInput(''); // Clear input on successful send attempt
+            setInput('');
         }
     };
 
     // --- Handle Flashcard Creation ---
     const handleFlashcardCreation = async (fileTexts: { fileName: string; text: string | any }[]) => {
-        console.log("Starting flashcard creation with files:", fileTexts.map(f => f.fileName));
-
-        // 1. Create a new conversation of type "flashcard"
         const title = `Flashcards: ${fileTexts.map(f => f.fileName).join(", ")}`;
-        // Start with only the base system message
         const newConversationId = createConversation('flashcard', title, [
             { role: 'system', content: initialSystemMessage }
         ]);
-        setCurrentConversationId(newConversationId); // Switch to the new conversation
+        setCurrentConversationId(newConversationId);
 
-        // 2. Prepare messages to send (system info + user prompt)
         let messagesToSend: Message[] = [{ role: 'system', content: initialSystemMessage }];
-
         const systemInfoMsg = `Flashcard creation initiated for: ${fileTexts.map((file) => file.fileName).join(", ")}`;
         messagesToSend = addSystemMessage(messagesToSend, systemInfoMsg);
-
         const prompt = `Please create flashcards from these files: ${fileTexts.map(file => {
-            const textStr = typeof file.text === 'string' ? file.text :
-                (file.text ? JSON.stringify(file.text) : 'No text extracted');
-            // Limit text length per file if necessary
+            const textStr = typeof file.text === 'string' ? file.text : (file.text ? JSON.stringify(file.text) : 'No text extracted');
             return `\n\nFile: ${file.fileName}\n${textStr.substring(0, 10000)}${textStr.length > 10000 ? '...' : ''}`;
         }).join('')}\n\nGenerate flashcards in the format: [Term] tab [Definition], new line between rows.`;
         messagesToSend = addUserMessage(messagesToSend, prompt);
-
-        // 3. Update the newly created conversation state with these initial messages
         updateConversationMessages(newConversationId, messagesToSend);
-
-        // 4. Send the prepared messages to the server
         sendSocketMessage(messagesToSend);
-
-        setFlashcardModalOpen(false); // Close modal
-        console.log("Flashcard conversation created and initial prompt sent.");
+        setFlashcardModalOpen(false);
     };
 
     // --- Handle Creating/Switching Conversations ---
     const createNewConversation = (type: ConversationType = 'normal') => {
         if (type === 'flashcard') {
-            setFlashcardModalOpen(true); // Open modal to select files
+            setFlashcardModalOpen(true);
         } else {
-            // Create a standard new chat
-            const newId = createConversation(type, 'New Chat', [
-                { role: 'system', content: initialSystemMessage }
-            ]);
-            setCurrentConversationId(newId); // Switch to the new conversation
-            setError(null); // Clear any previous errors
-            setInput(''); // Clear input field
-            console.log("Created new conversation, ID:", newId);
+            const newId = createConversation(type, 'New Chat', [{ role: 'system', content: initialSystemMessage }]);
+            setCurrentConversationId(newId);
+            setError(null);
+            setInput('');
         }
     };
 
     // --- Handle Deleting Conversation ---
     const handleDeleteConversation = (e: MouseEvent<HTMLButtonElement>, idToDelete: string) => {
-        e.stopPropagation(); // Prevent the click from selecting the conversation
-        console.log("Deleting conversation:", idToDelete);
+        e.stopPropagation();
         removeConversation(idToDelete);
     };
 
-    // Determine messages to display based on current conversation
-    const [displayMessages, setDisplayMessages] = useState<Message[]>(currentConversation?.messages ?? []);
-
+    // --- State for messages to display ---
+    const [displayMessages, setDisplayMessages] = useState<Message[]>([]);
     useEffect(() => {
         setDisplayMessages(currentConversation?.messages ?? []);
     }, [currentConversation]);
 
-    // Determine if initial cards should be shown
-    // Show cards if no conversation is selected OR if the current one is 'normal' and only has the system message
+    // --- Effects for Scrolling ---
+    // 1. Scroll when the current conversation is loaded or switched
+    useEffect(() => {
+        if (currentConversationId) { // Ensure a conversation is selected
+            console.log(`[App useEffect] currentConversationId changed: ${currentConversationId}. Scheduling scroll.`);
+            // Delay slightly to allow MessageList to render with new messages
+            const timer = setTimeout(() => {
+                console.log(`[App useEffect] Delayed scroll for currentConversationId: ${currentConversationId}.`);
+                scrollToBottom();
+            }, 50); // Adjust delay if needed, 50-100ms is usually sufficient
+            return () => clearTimeout(timer);
+        }
+    }, [currentConversationId, scrollToBottom]); // Rerun if currentConversationId or scrollToBottom changes
 
+    // 2. Scroll when new messages are added to the displayMessages
+    useEffect(() => {
+        if (displayMessages.length > 0) {
+            // This will also be triggered by useSocketManager updates via handleMessagesUpdate
+            console.log(`[App useEffect] displayMessages changed (length: ${displayMessages.length}). Scheduling scroll.`);
+            scrollToBottom();
+        }
+    }, [displayMessages, scrollToBottom]); // Rerun if displayMessages or scrollToBottom changes
 
-    // --- Render JSX ---
     return (
-        <div className="flex w-screen h-screen bg-white dark:bg-gray-900"> {/* Added base background */}
+        <div className="flex w-screen h-screen bg-white dark:bg-gray-900">
             {/* Sidebar */}
             <motion.div
                 initial={{ width: sidebarOpen ? "15em" : "3.25em" }}
                 animate={{ width: sidebarOpen ? "15em" : "3.25em" }}
-                transition={{ duration: 0.3, type: "spring", stiffness: 400, damping: 35 }}
-                className="flex p-1 flex-col border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 border-r overflow-hidden h-full flex-shrink-0"
+                className="flex p-1 flex-col  bg-gray-50 dark:bg-gray-800 overflow-hidden h-full flex-shrink-0"
             >
                 {/* Sidebar Header */}
                 <div className="w-full text-xl p-1.5 rounded-md flex items-center justify-between flex-shrink-0">
@@ -183,14 +180,14 @@ function App() {
                         onClick={() => setSideBarOpen(!sidebarOpen)}
                         className="text-gray-700 dark:text-gray-300 font-bold flex items-center justify-center rounded-md material-symbols-rounded p-1 hover:bg-gray-200 dark:hover:bg-gray-700"
                     >
-                        {sidebarOpen ? "menu_open" : "menu"}
+                        <PanelLeft className="text-gray-700 dark:text-gray-300" />
                     </button>
                     {sidebarOpen && (
                         <button
                             onClick={() => createNewConversation('normal')}
-                            className="flex gap-1 text-lg font-semibold bg-green-100 text-green-800 border rounded-full p-1 cursor-pointer items-center justify-center"
+                            className="flex gap-1 text-lg font-semibold text-gray-700 rounded-full p-1 cursor-pointer items-center justify-center"
                         >
-                            <span className="material-symbols-rounded flex flex-col items-center justify-center">add</span>
+                            <SquarePen className="text-gray-700 dark:text-gray-300" />
                         </button>
                     )}
                 </div>
@@ -198,53 +195,47 @@ function App() {
                 {sidebarOpen && (
                     <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
                         {[...conversations]
-                          .sort((a, b) => b.updatedAt - a.updatedAt)
-                          .map(convo => (
-                            <div
-                                key={convo.id}
-                                onClick={() => setCurrentConversationId(convo.id)}
-                                className={`group flex items-center justify-between p-2 rounded cursor-pointer text-sm ${
-                                    currentConversationId === convo.id
-                                        ? 'bg-blue-200 dark:bg-blue-700 font-semibold'
-                                        : 'hover:bg-gray-200 dark:hover:bg-gray-700'
-                                } text-gray-800 dark:text-gray-200`}
-                                title={convo.title}
-                            >
-                                <span className="truncate flex-1 mr-2">{convo.title || "Untitled Chat"}</span>
-                                <button
-                                    onClick={(e) => handleDeleteConversation(e, convo.id)}
-                                    className="material-symbols-rounded text-base text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-                                    title="Delete conversation"
+                            .sort((a, b) => b.updatedAt - a.updatedAt)
+                            .map(convo => (
+                                <div
+                                    key={convo.id}
+                                    onClick={() => setCurrentConversationId(convo.id)}
+                                    className={`group flex items-center justify-between p-2 rounded cursor-pointer text-sm ${currentConversationId === convo.id
+                                            ? 'bg-blue-200 dark:bg-blue-700 font-semibold'
+                                            : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+                                        } text-gray-800 dark:text-gray-200`}
+                                    title={convo.title}
                                 >
-                                    delete
-                                </button>
-                            </div>
-                        ))}
+                                    <span className="truncate flex-1 mr-2">{convo.title || "Untitled Chat"}</span>
+                                    <button
+                                        onClick={(e) => handleDeleteConversation(e, convo.id)}
+                                        className="material-symbols-rounded text-base text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                                        title="Delete conversation"
+                                    >
+                                        delete
+                                    </button>
+                                </div>
+                            ))}
                     </div>
                 )}
             </motion.div>
 
             {/* Main Chat Area */}
-            <div className="flex flex-1 relative p-2 flex-col h-screen overflow-hidden"> {/* Added overflow-hidden */}
+            <div className="flex flex-1 relative p-2 flex-col h-screen overflow-hidden">
                 {/* Top Bar */}
                 <motion.div
                     layout
-                    className="grid grid-cols-3 sticky top-0 items-center justify-between backdrop-blur-md p-1 z-10 flex-shrink-0" // Changed to grid layout
+                    className="flex text-black bg-transparent font-normal absolute top-0 items-center justify-between p-3 pr-10 z-10 flex-shrink-0 w-full"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                 >
-                    {/* Left Section: AI Name */}
-                    <div className="flex items-center justify-start text-lg text-gray-700 dark:text-gray-200 font-semibold">
-                        sharesyllabus.me AI
+                    <div className="flex items-center justify-start text-lg">
+                        Yay AI
                     </div>
-
-                    {/* Middle Section: Conversation Title */}
-                    <div className="flex items-center justify-center text-lg text-gray-700 dark:text-gray-200 font-semibold truncate">
-                        {currentConversation?.title || "Untitled Conversation"}
+                    <div className="flex items-center justify-center text-lg truncate">
+                        
                     </div>
-
-                    {/* Right Section: Connection Status */}
                     <div className="flex items-center justify-end gap-2">
                         <div
                             className={`w-3 h-3 rounded-full self-center ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}
@@ -254,87 +245,59 @@ function App() {
                 </motion.div>
 
                 {/* Message Display Area */}
-                <div className="flex-1 h-full"> {/* Ensure this scrolls */}
-                        <MessageList
-                            messages={displayMessages.filter(m => m.role !== 'system')}
-                            messagesEndRef={messagesEndRef}
-                            isLoading={isLoading}
-                            isConnected={isConnected}
-                            conversationType={currentConversation?.type || 'normal'}
-                        />
-                    {/* Debugging info */}
-                    
+                <div
+                    ref={chatContainerRef} // Keep this ref for potential direct container manipulation if needed, but scrolling targets messagesEndRef
+                    className="flex-1 overflow-y-auto h-full overflow-x-hidden" // This div is the scrollable container
+                >
+                    <MessageList
+                        messages={displayMessages.filter(m => m.role !== 'system')}
+                        messagesEndRef={messagesEndRef} // Pass the ref to MessageList
+                        isLoading={isLoading}
+                        isConnected={isConnected}
+                        conversationType={currentConversation?.type || 'normal'}
+                    />
                 </div>
 
-                {/* Thinking Indicator */}
-                
-
                 {/* Input Area */}
-                <motion.div
-                    layout
-                    className={`absolute left-0  right-0 p-4 z-10 ${
-                        displayMessages.length < 2 ? 'bottom-1/3' : 'bottom-0'
-                    }`}
+                <div
+                    className={`absolute left-0 right-0 p-4 z-10 ${displayMessages.length < 2 ? 'bottom-1/3' : 'bottom-0'
+                        }`}
                 >
-                    {displayMessages.length < 2 && 
-                    <div className="w-full flex flex-col">
-                        <motion.div
-                            className="flex justify-center"
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            transition={{ duration: 1 }}
-                        >
-                            <motion.img
-                                src="logo_big.png"
-                                width="200"
-                                height="200"
-                                className=""
-                                animate={{ rotateY: [0, 180], rotateX: [0, 180] }}
-                                transition={{
-                                    duration: 0.5,
-                                    ease: [0.39, 0.24, 0.3, 1],
-                                }}
-                            />
-                        </motion.div>
-                        <motion.div
-                        className="w-full font-black text-3xl flex place-items-center justify-center"
-                        initial="hidden"
-                        animate="visible"
-                        variants={{
-                            hidden: { opacity: 0 },
-                            visible: {
-                                opacity: 1,
-                                transition: {
-                                    staggerChildren: 0.1,
-                                },
-                            },
-                        }}
-                    >
-                        {["the", "best", "ai", "tools", "for", "students,", "completely", "free!"].map((word, index) => (
-                            <motion.span
-                                key={index}
-                                className="inline-block"
-                                variants={{
-                                    hidden: { opacity: 0, y: 20 },
-                                    visible: { opacity: 1, y: 0 },
-                                }}
-                            >
-                                {word}&nbsp;
-                            </motion.span>
-                        ))}
-                        </motion.div>
-                    </div>}
+                    {displayMessages.length < 2 && !currentConversationId &&
+                        <div className="w-full flex flex-col">
+                            <div className="flex justify-center">
+                                <img
+                                    src="logo_big.png"
+                                    width="200"
+                                    height="200"
+                                    className=""
+                                />
+                            </div>
+                            <div className="w-full font-black text-3xl flex place-items-center justify-center">
+                                {["free", "AI", "tools", "for", "students"].map((word, index) => (
+                                    <span key={index} className="inline-block">
+                                        {word}&nbsp;
+                                    </span>
+                                ))}
+                            </div>
+                            <text className="text-gray-700 gap-1 text-xs place-items-center justify-center w-full flex">
+                                by College Success Club
+                                <Sparkles size={16} />
+                            </text>
+                        </div>}
                     <ChatInput
                         input={input}
                         setInput={setInput}
-                        handleSendMessage={handleSendMessage} // Uses updated handler
+                        handleSendMessage={handleSendMessage}
                         isLoading={isLoading}
                         isConnected={isConnected}
                         error={error}
                         flashcardModalOpen={flashcardModalOpen}
                         setFlashcardModalOpen={setFlashcardModalOpen}
+                        setUseResearch={setUseResearch}
+                        useResearch={useResearch}
                     />
-                </motion.div>
+                </div>
             </div>
 
             {/* Flashcard Creator Modal */}
@@ -342,7 +305,7 @@ function App() {
                 {flashcardModalOpen && (
                     <FlashCardCreator
                         setModalOpen={setFlashcardModalOpen}
-                        onFlashcardCreation={handleFlashcardCreation} // Uses updated handler
+                        onFlashcardCreation={handleFlashcardCreation}
                     />
                 )}
             </AnimatePresence>
