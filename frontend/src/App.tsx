@@ -4,17 +4,19 @@ import { useSocketManager } from './hooks/useSocketManager';
 import useConversations from './hooks/useConversations'; // Import useConversations
 import { Message, ConversationType } from './types'; // Import ConversationType
 import "./index.css";
+import 'katex/dist/katex.min.css'; 
 import FlashCardCreator from './components/FlashCardCreator';
 import ChatInput from './components/ChatInput';
 import MessageList from './components/MessageList';
 import { addSystemMessage, addUserMessage } from './assets/prompts'; // Import message helpers
 import { PanelLeft, Sparkles, SquarePen } from "lucide-react";
+import { ChatScrollAnchor } from './components/ChatScrollAnchor';
 
 function App() {
-    const initialSystemMessage = "You are a helpful assistant. Your name is sharesyllabus.me ai. When you want to put a header, put a #, ##, ###, or similar for markdown interpreters. Headers should start with an emoji before the words, and avoid using numbers on headers. Also DO NOT use excessive line spaces (backslash n), use a line breaker instead when necessary.";
+    const initialSystemMessage = "You are a helpful assistant. \n Your name is sharesyllabus.me ai. \n When you want to put a header, put a #, ##, ###, or similar for markdown interpreters. Headers should start with an emoji before the words, and avoid using numbers on headers. \n Also DO NOT use excessive line spaces (backslash n), use a line breaker instead when necessary. When you want to write mathjax, use dollar signs instead of backslash brackets. if you want to render anything with special symbols including chemistry ones, use the dollar sign MathJax format. \n ANYTIME YOU WANT TO WRITE NOTATION, use DOLLAR SIGNS $";
     // --- Refs for scrolling ---
-    const messagesEndRef = useRef<HTMLDivElement | null>(null); // Ref for the target div at the end of MessageList
-    const chatContainerRef = useRef<HTMLDivElement | null>(null); // Ref for the scrollable messages container in App.tsx
+    const messagesEndRef = useRef<HTMLDivElement>(null); // Ref for the target div at the end of MessageList
+    const chatContainerRef = useRef<HTMLDivElement>(null); // Ref for the scrollable messages container in App.tsx
 
     const [input, setInput] = useState('');
     const [sidebarOpen, setSideBarOpen] = useState(true);
@@ -22,6 +24,8 @@ function App() {
     const [useResearch, setUseResearch] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    const [isAtBottom, setIsAtBottom] = useState(true); // State to track if the user is at the bottom of the chat
 
     const {
         conversations,
@@ -33,19 +37,19 @@ function App() {
         removeConversation,
     } = useConversations();
 
-    
+
 
     // --- Scroll to Bottom Logic ---
-    const scrollToBottom = useCallback(() => {
-        requestAnimationFrame(() => {
-            if (messagesEndRef.current) {
-                console.log('[ScrollToBottom] Attempting scrollIntoView on messagesEndRef');
-                messagesEndRef.current.scrollIntoView({ behavior: 'auto' }); // 'auto' for instant scroll
-            } else {
-                console.log('[ScrollToBottom] messagesEndRef.current is null. Ensure MessageList is rendered and ref is passed.');
-            }
-        });
-    }, []); // messagesEndRef is a ref, its .current value changes don't trigger useCallback re-creation
+
+    const handleScroll = () => {
+        if (!chatContainerRef.current) return;
+
+        const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current;
+        const atBottom = scrollHeight - clientHeight <= scrollTop + 1;
+
+        setIsAtBottom(atBottom);
+    };
+
 
     // --- Define Callback for Socket Manager ---
     const handleMessagesUpdate = useCallback((updater: (prevMessages: Message[]) => Message[]) => {
@@ -60,8 +64,7 @@ function App() {
     const { isConnected, sendMessage: sendSocketMessage } = useSocketManager(
         handleMessagesUpdate,
         setIsLoading,
-        setError,
-        scrollToBottom // Pass App.tsx's scrollToBottom
+        setError, // Pass App.tsx's scrollToBottom
     );
 
     // --- Handle Sending User Message ---
@@ -151,20 +154,18 @@ function App() {
             // Delay slightly to allow MessageList to render with new messages
             const timer = setTimeout(() => {
                 console.log(`[App useEffect] Delayed scroll for currentConversationId: ${currentConversationId}.`);
-                scrollToBottom();
             }, 50); // Adjust delay if needed, 50-100ms is usually sufficient
             return () => clearTimeout(timer);
         }
-    }, [currentConversationId, scrollToBottom]); // Rerun if currentConversationId or scrollToBottom changes
+    }, [currentConversationId]); // Rerun if currentConversationId or scrollToBottom changes
 
     // 2. Scroll when new messages are added to the displayMessages
     useEffect(() => {
         if (displayMessages.length > 0) {
             // This will also be triggered by useSocketManager updates via handleMessagesUpdate
             console.log(`[App useEffect] displayMessages changed (length: ${displayMessages.length}). Scheduling scroll.`);
-            scrollToBottom();
         }
-    }, [displayMessages, scrollToBottom]); // Rerun if displayMessages or scrollToBottom changes
+    }, [displayMessages]); // Rerun if displayMessages or scrollToBottom changes
 
     return (
         <div className="flex w-screen h-screen bg-white dark:bg-gray-900">
@@ -201,8 +202,8 @@ function App() {
                                     key={convo.id}
                                     onClick={() => setCurrentConversationId(convo.id)}
                                     className={`group flex items-center justify-between p-2 rounded cursor-pointer text-sm ${currentConversationId === convo.id
-                                            ? 'bg-blue-200 dark:bg-blue-700 font-semibold'
-                                            : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+                                        ? 'bg-blue-200 dark:bg-blue-700 font-semibold'
+                                        : 'hover:bg-gray-200 dark:hover:bg-gray-700'
                                         } text-gray-800 dark:text-gray-200`}
                                     title={convo.title}
                                 >
@@ -234,7 +235,7 @@ function App() {
                         Yay AI
                     </div>
                     <div className="flex items-center justify-center text-lg truncate">
-                        
+
                     </div>
                     <div className="flex items-center justify-end gap-2">
                         <div
@@ -247,6 +248,7 @@ function App() {
                 {/* Message Display Area */}
                 <div
                     ref={chatContainerRef} // Keep this ref for potential direct container manipulation if needed, but scrolling targets messagesEndRef
+                    onScroll={handleScroll}
                     className="flex-1 overflow-y-auto h-full overflow-x-hidden" // This div is the scrollable container
                 >
                     <MessageList
@@ -255,6 +257,11 @@ function App() {
                         isLoading={isLoading}
                         isConnected={isConnected}
                         conversationType={currentConversation?.type || 'normal'}
+                    />
+                    <ChatScrollAnchor
+                        scrollAreaRef={chatContainerRef}
+                        isAtBottom={isAtBottom}
+                        trackVisibility={isLoading}
                     />
                 </div>
 

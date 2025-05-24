@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Message } from '../types';
-import ReactMarkdown from 'react-markdown';
-import Marquee from "react-fast-marquee";
+import { Markdown } from './Markdown';
+
 
 interface MessageListProps {
     messages: Message[];
@@ -18,18 +18,15 @@ const MessageList: React.FC<MessageListProps> = ({
     isConnected,
     conversationType,
 }) => {
-    const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
+    
 
-    const toggleSection = (id: string) => {
-        setExpandedSections(prev => ({
-            ...prev,
-            [id]: !prev[id]
-        }));
-    };
+    console.log(conversationType)
+
+    
 
     return (
         <div
-            className="flex-1 flex flex-col pt-20 place-items-center overflow-y-auto h-full w-full"
+            className="flex-1 flex flex-col pt-20 place-items-center h-full w-full"
         >
             <div className="flex-1 h-full md:w-3/4 lg:w-1/2 pb-4">
                 {messages.map((message, index) => {
@@ -39,21 +36,8 @@ const MessageList: React.FC<MessageListProps> = ({
                     const messageId = `message-${index}`;
 
                     // Special handling for the first user message in flashcard conversations
-                    if (conversationType === 'flashcard' && isUser && index === 0) {
-                        return (
-                            <div
-                                key={messageId}
-                                className="flex justify-end mb-4"
-                            >
-                                <div className="p-3 text-lg border-gray-200 rounded-3xl bg-yellow-50 text-black border">
-                                    <div className="font-bold mb-2">file(s) data for creating flashcard:</div>
-                                    <div className="bg-blue-700 font-bold rounded-full text-white flex w-full">
-                                        <Marquee speed={5}>{message.content}</Marquee>
-                                    </div>
-                                </div>
-                            </div>
-                        );
-                    }
+                    
+                    
 
                     return (
                         <div key={messageId} className="justify-items-end mb-4">
@@ -66,28 +50,11 @@ const MessageList: React.FC<MessageListProps> = ({
                                 {message.role === 'assistant' ? (
                                     <div className="whitespace-pre-wrap text-black text-lg">
                                         {typeof message.content === 'string' ? (
-                                            <ReactMarkdown
-                                                components={{
-                                                    ol: ({ children, ...props }) => (
-                                                        <ol
-                                                            {...props}
-                                                            className=""
-                                                        >
-                                                            {children}
-                                                        </ol>
-                                                    ),
-                                                    ul: ({ children, ...props }) => (
-                                                        <ul
-                                                            {...props}
-                                                            className=""
-                                                        >
-                                                            {children}
-                                                        </ul>
-                                                    ),
-                                                }}
+                                            <Markdown
+                                                
                                             >
                                                 {message.content}
-                                            </ReactMarkdown>
+                                            </Markdown>
                                         ) : (
                                             <div className="text-red-500">
                                                 Error: Invalid message content
@@ -98,38 +65,10 @@ const MessageList: React.FC<MessageListProps> = ({
                                     <div className="whitespace-pre-wrap flex justify-end text-end flex-col max-w-max ml-auto">
                                         {typeof message.content === 'string'
                                             ? message.content.split(/({.*?})/).map((part, i) => {
-                                                const partId = `${messageId}-part-${i}`;
 
-                                                if (part.startsWith('{') && part.endsWith('}')) {
-                                                    const isExpanded = expandedSections[partId] || false;
-
-                                                    return (
-                                                        <div
-                                                            key={i}
-                                                            className="flex-col gap-2 bg-blue-500 rounded-md p-2 shadow-md text-white flex my-2"
-                                                        >
-                                                            <div
-                                                                className="flex gap-2 cursor-pointer"
-                                                                onClick={() => toggleSection(partId)}
-                                                            >
-                                                                <span className="material-symbols-rounded">
-                                                                    {isExpanded ? 'expand_less' : 'expand_more'}
-                                                                </span>
-                                                                <div className="flex-1 font-bold">
-                                                                    File content (click to {isExpanded ? 'collapse' : 'expand'})
-                                                                </div>
-                                                            </div>
-
-                                                            {isExpanded && (
-                                                                <div className="overflow-y-auto max-h-64 bg-blue-600 p-2 rounded mt-1">
-                                                                    {part.slice(1, -1)}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    );
-                                                } else {
+                                                
                                                     return <div key={i}>{part}</div>;
-                                                }
+                                                
                                             })
                                             : 'No content'}
                                     </div>

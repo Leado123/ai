@@ -9,7 +9,6 @@ export function useSocketManager(
     onMessagesUpdate: (updater: (prevMessages: Message[]) => Message[]) => void,
     setIsLoading: React.Dispatch<React.SetStateAction<boolean>>,
     setError: React.Dispatch<React.SetStateAction<string | null>>,
-    scrollToBottom: () => void
 ) {
     const [isConnected, setIsConnected] = useState(false);
     const socketRef = useRef<Socket | null>(null);
@@ -72,15 +71,13 @@ export function useSocketManager(
                 return [...currentMessages, newMessage];
             }
         });
-        requestAnimationFrame(scrollToBottom);
-    }, [onMessagesUpdate, scrollToBottom]);
+    }, [onMessagesUpdate]);
 
     // Modified handleStreamEnd
     const handleStreamEnd = useCallback(() => {
         console.log('>>> STREAM END.');
         setIsLoading(false);
-        scrollToBottom();
-    }, [setIsLoading, scrollToBottom]);
+    }, [setIsLoading]);
 
     useEffect(() => {
         if (!socketRef.current) {
