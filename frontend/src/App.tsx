@@ -1,6 +1,7 @@
 import { useRef, FormEvent, useState, useCallback, MouseEvent, useEffect } from 'react'; // Added MouseEvent
 import { AnimatePresence, motion } from "framer-motion";
-import { useSocketManager } from './hooks/useSocketManager';
+import { trpc, trpcClient, queryClient } from './hooks/useTrpcManager';
+import { QueryClientProvider } from '@tanstack/react-query';
 import useConversations from './hooks/useConversations'; // Import useConversations
 import { Message, ConversationType } from './types'; // Import ConversationType
 import "./index.css";
@@ -61,7 +62,7 @@ function App() {
     }, [currentConversationId, updateConversationMessages]);
 
     // --- Use Socket Manager with Callback ---
-    const { isConnected, sendMessage: sendSocketMessage } = useSocketManager(
+    const { isConnected, sendMessage: sendSocketMessage } = useTrpcManager(
         handleMessagesUpdate,
         setIsLoading,
         setError, // Pass App.tsx's scrollToBottom
@@ -162,161 +163,165 @@ function App() {
     // 2. Scroll when new messages are added to the displayMessages
     useEffect(() => {
         if (displayMessages.length > 0) {
-            // This will also be triggered by useSocketManager updates via handleMessagesUpdate
+            // This will also be triggered by useTrpcManager updates via handleMessagesUpdate
             console.log(`[App useEffect] displayMessages changed (length: ${displayMessages.length}). Scheduling scroll.`);
         }
     }, [displayMessages]); // Rerun if displayMessages or scrollToBottom changes
 
     return (
-        <div className="flex w-screen h-screen bg-white dark:bg-gray-900">
-            {/* Sidebar */}
-            <motion.div
-                initial={{ width: sidebarOpen ? "15em" : "3.25em" }}
-                animate={{ width: sidebarOpen ? "15em" : "3.25em" }}
-                className="flex p-1 flex-col  bg-gray-50 dark:bg-gray-800 overflow-hidden h-full flex-shrink-0"
-            >
-                {/* Sidebar Header */}
-                <div className="w-full text-xl p-1.5 rounded-md flex items-center justify-between flex-shrink-0">
-                    <button
-                        onClick={() => setSideBarOpen(!sidebarOpen)}
-                        className="text-gray-700 dark:text-gray-300 font-bold flex items-center justify-center rounded-md material-symbols-rounded p-1 hover:bg-gray-200 dark:hover:bg-gray-700"
+        <trpc.Provider client={trpcClient} queryClient={queryClient}>
+            <QueryClientProvider client={queryClient}>
+                <div className="flex w-screen h-screen bg-white dark:bg-gray-900">
+                    {/* Sidebar */}
+                    <motion.div
+                        initial={{ width: sidebarOpen ? "15em" : "3.25em" }}
+                        animate={{ width: sidebarOpen ? "15em" : "3.25em" }}
+                        className="flex p-1 flex-col  bg-gray-50 dark:bg-gray-800 overflow-hidden h-full flex-shrink-0"
                     >
-                        <PanelLeft className="text-gray-700 dark:text-gray-300" />
-                    </button>
-                    {sidebarOpen && (
-                        <button
-                            onClick={() => createNewConversation('normal')}
-                            className="flex gap-1 text-lg font-semibold text-gray-700 rounded-full p-1 cursor-pointer items-center justify-center"
-                        >
-                            <SquarePen className="text-gray-700 dark:text-gray-300" />
-                        </button>
-                    )}
-                </div>
-                {/* Conversation List */}
-                {sidebarOpen && (
-                    <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
-                        {[...conversations]
-                            .sort((a, b) => b.updatedAt - a.updatedAt)
-                            .map(convo => (
-                                <div
-                                    key={convo.id}
-                                    onClick={() => setCurrentConversationId(convo.id)}
-                                    className={`group flex items-center justify-between p-2 rounded cursor-pointer text-sm ${currentConversationId === convo.id
-                                        ? 'bg-blue-200 dark:bg-blue-700 font-semibold'
-                                        : 'hover:bg-gray-200 dark:hover:bg-gray-700'
-                                        } text-gray-800 dark:text-gray-200`}
-                                    title={convo.title}
+                        {/* Sidebar Header */}
+                        <div className="w-full text-xl p-1.5 rounded-md flex items-center justify-between flex-shrink-0">
+                            <button
+                                onClick={() => setSideBarOpen(!sidebarOpen)}
+                                className="text-gray-700 dark:text-gray-300 font-bold flex items-center justify-center rounded-md material-symbols-rounded p-1 hover:bg-gray-200 dark:hover:bg-gray-700"
+                            >
+                                <PanelLeft className="text-gray-700 dark:text-gray-300" />
+                            </button>
+                            {sidebarOpen && (
+                                <button
+                                    onClick={() => createNewConversation('normal')}
+                                    className="flex gap-1 text-lg font-semibold text-gray-700 rounded-full p-1 cursor-pointer items-center justify-center"
                                 >
-                                    <span className="truncate flex-1 mr-2">{convo.title || "Untitled Chat"}</span>
-                                    <button
-                                        onClick={(e) => handleDeleteConversation(e, convo.id)}
-                                        className="material-symbols-rounded text-base text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-                                        title="Delete conversation"
-                                    >
-                                        delete
-                                    </button>
-                                </div>
-                            ))}
-                    </div>
-                )}
-            </motion.div>
+                                    <SquarePen className="text-gray-700 dark:text-gray-300" />
+                                </button>
+                            )}
+                        </div>
+                        {/* Conversation List */}
+                        {sidebarOpen && (
+                            <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
+                                {[...conversations]
+                                    .sort((a, b) => b.updatedAt - a.updatedAt)
+                                    .map(convo => (
+                                        <div
+                                            key={convo.id}
+                                            onClick={() => setCurrentConversationId(convo.id)}
+                                            className={`group flex items-center justify-between p-2 rounded cursor-pointer text-sm ${currentConversationId === convo.id
+                                                ? 'bg-blue-200 dark:bg-blue-700 font-semibold'
+                                                : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+                                                } text-gray-800 dark:text-gray-200`}
+                                            title={convo.title}
+                                        >
+                                            <span className="truncate flex-1 mr-2">{convo.title || "Untitled Chat"}</span>
+                                            <button
+                                                onClick={(e) => handleDeleteConversation(e, convo.id)}
+                                                className="material-symbols-rounded text-base text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                                                title="Delete conversation"
+                                            >
+                                                delete
+                                            </button>
+                                        </div>
+                                    ))}
+                            </div>
+                        )}
+                    </motion.div>
 
-            {/* Main Chat Area */}
-            <div className="flex flex-1 relative p-2 flex-col h-screen overflow-hidden">
-                {/* Top Bar */}
-                <motion.div
-                    layout
-                    className="flex text-black bg-transparent font-normal absolute top-0 items-center justify-between p-3 pr-10 z-10 flex-shrink-0 w-full"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                >
-                    <div className="flex items-center justify-start text-lg">
-                        Yay AI
-                    </div>
-                    <div className="flex items-center justify-center text-lg truncate">
+                    {/* Main Chat Area */}
+                    <div className="flex flex-1 relative p-2 flex-col h-screen overflow-hidden">
+                        {/* Top Bar */}
+                        <motion.div
+                            layout
+                            className="flex text-black bg-transparent font-normal absolute top-0 items-center justify-between p-3 pr-10 z-10 flex-shrink-0 w-full"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                        >
+                            <div className="flex items-center justify-start text-lg">
+                                Yay AI
+                            </div>
+                            <div className="flex items-center justify-center text-lg truncate">
 
-                    </div>
-                    <div className="flex items-center justify-end gap-2">
+                            </div>
+                            <div className="flex items-center justify-end gap-2">
+                                <div
+                                    className={`w-3 h-3 rounded-full self-center ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}
+                                    title={isConnected ? 'Connected' : 'Disconnected'}
+                                ></div>
+                            </div>
+                        </motion.div>
+
+                        {/* Message Display Area */}
                         <div
-                            className={`w-3 h-3 rounded-full self-center ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}
-                            title={isConnected ? 'Connected' : 'Disconnected'}
-                        ></div>
+                            ref={chatContainerRef} // Keep this ref for potential direct container manipulation if needed, but scrolling targets messagesEndRef
+                            onScroll={handleScroll}
+                            className="flex-1 overflow-y-auto h-full overflow-x-hidden" // This div is the scrollable container
+                        >
+                            <MessageList
+                                messages={displayMessages.filter(m => m.role !== 'system')}
+                                messagesEndRef={messagesEndRef} // Pass the ref to MessageList
+                                isLoading={isLoading}
+                                isConnected={isConnected}
+                                conversationType={currentConversation?.type || 'normal'}
+                            />
+                            <ChatScrollAnchor
+                                scrollAreaRef={chatContainerRef}
+                                isAtBottom={isAtBottom}
+                                trackVisibility={isLoading}
+                            />
+                        </div>
+
+                        {/* Input Area */}
+                        <div
+                            className={`absolute left-0 right-0 p-4 z-10 ${displayMessages.length < 2 ? 'bottom-1/3' : 'bottom-0'
+                                }`}
+                        >
+                            {displayMessages.length < 2 && !currentConversationId &&
+                                <div className="w-full flex flex-col">
+                                    <div className="flex justify-center">
+                                        <img
+                                            src="logo_big.png"
+                                            width="200"
+                                            height="200"
+                                            className=""
+                                        />
+                                    </div>
+                                    <div className="w-full font-black text-3xl flex place-items-center justify-center">
+                                        {["free", "AI", "tools", "for", "students"].map((word, index) => (
+                                            <span key={index} className="inline-block">
+                                                {word}&nbsp;
+                                            </span>
+                                        ))}
+                                    </div>
+                                    <text className="text-gray-700 gap-1 text-xs place-items-center justify-center w-full flex">
+                                        by College Success Club
+                                        <Sparkles size={16} />
+                                    </text>
+                                </div>}
+                            <ChatInput
+                                input={input}
+                                setInput={setInput}
+                                handleSendMessage={handleSendMessage}
+                                isLoading={isLoading}
+                                isConnected={isConnected}
+                                error={error}
+                                flashcardModalOpen={flashcardModalOpen}
+                                setFlashcardModalOpen={setFlashcardModalOpen}
+                                setUseResearch={setUseResearch}
+                                useResearch={useResearch}
+                            />
+                        </div>
                     </div>
-                </motion.div>
 
-                {/* Message Display Area */}
-                <div
-                    ref={chatContainerRef} // Keep this ref for potential direct container manipulation if needed, but scrolling targets messagesEndRef
-                    onScroll={handleScroll}
-                    className="flex-1 overflow-y-auto h-full overflow-x-hidden" // This div is the scrollable container
-                >
-                    <MessageList
-                        messages={displayMessages.filter(m => m.role !== 'system')}
-                        messagesEndRef={messagesEndRef} // Pass the ref to MessageList
-                        isLoading={isLoading}
-                        isConnected={isConnected}
-                        conversationType={currentConversation?.type || 'normal'}
-                    />
-                    <ChatScrollAnchor
-                        scrollAreaRef={chatContainerRef}
-                        isAtBottom={isAtBottom}
-                        trackVisibility={isLoading}
-                    />
+                    {/* Flashcard Creator Modal */}
+                    <AnimatePresence>
+                        {flashcardModalOpen && (
+                            <FlashCardCreator
+                                setModalOpen={setFlashcardModalOpen}
+                                onFlashcardCreation={handleFlashcardCreation}
+                            />
+                        )}
+                    </AnimatePresence>
                 </div>
-
-                {/* Input Area */}
-                <div
-                    className={`absolute left-0 right-0 p-4 z-10 ${displayMessages.length < 2 ? 'bottom-1/3' : 'bottom-0'
-                        }`}
-                >
-                    {displayMessages.length < 2 && !currentConversationId &&
-                        <div className="w-full flex flex-col">
-                            <div className="flex justify-center">
-                                <img
-                                    src="logo_big.png"
-                                    width="200"
-                                    height="200"
-                                    className=""
-                                />
-                            </div>
-                            <div className="w-full font-black text-3xl flex place-items-center justify-center">
-                                {["free", "AI", "tools", "for", "students"].map((word, index) => (
-                                    <span key={index} className="inline-block">
-                                        {word}&nbsp;
-                                    </span>
-                                ))}
-                            </div>
-                            <text className="text-gray-700 gap-1 text-xs place-items-center justify-center w-full flex">
-                                by College Success Club
-                                <Sparkles size={16} />
-                            </text>
-                        </div>}
-                    <ChatInput
-                        input={input}
-                        setInput={setInput}
-                        handleSendMessage={handleSendMessage}
-                        isLoading={isLoading}
-                        isConnected={isConnected}
-                        error={error}
-                        flashcardModalOpen={flashcardModalOpen}
-                        setFlashcardModalOpen={setFlashcardModalOpen}
-                        setUseResearch={setUseResearch}
-                        useResearch={useResearch}
-                    />
-                </div>
-            </div>
-
-            {/* Flashcard Creator Modal */}
-            <AnimatePresence>
-                {flashcardModalOpen && (
-                    <FlashCardCreator
-                        setModalOpen={setFlashcardModalOpen}
-                        onFlashcardCreation={handleFlashcardCreation}
-                    />
-                )}
-            </AnimatePresence>
-        </div>
+            </QueryClientProvider>
+        </trpc.Provider>
     );
 }
 
