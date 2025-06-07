@@ -39,6 +39,7 @@
     "motion": "^12.7.4",
     "motion-plus": "^0.1.6",
     "office-text-extractor": "^3.0.3",
+    "ollama": "^0.5.16",
     "path": "^0.12.7",
     "react": "^19.0.0",
     "react-aria-components": "^1.8.0",

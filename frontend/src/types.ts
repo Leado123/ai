@@ -4,6 +4,7 @@
 export interface Message {
   role: 'user' | 'assistant' | 'system';
   content: string;
+  id?: string; // Optional id for tracking message updates
 }
 
 export interface ModalItem {

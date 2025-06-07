@@ -1,6 +1,6 @@
 import { useRef, FormEvent, useState, useCallback, MouseEvent, useEffect } from 'react'; // Added MouseEvent
 import { AnimatePresence, motion } from "framer-motion";
-import { trpc, trpcClient, queryClient } from './hooks/useTrpcManager';
+import { trpc, trpcClient, queryClient, useTrpcManager } from './hooks/useTrpcManager';
 import { QueryClientProvider } from '@tanstack/react-query';
 import useConversations from './hooks/useConversations'; // Import useConversations
 import { Message, ConversationType } from './types'; // Import ConversationType
@@ -27,6 +27,7 @@ function App() {
     const [error, setError] = useState<string | null>(null);
 
     const [isAtBottom, setIsAtBottom] = useState(true); // State to track if the user is at the bottom of the chat
+    const [pendingMessages, setPendingMessages] = useState<Message[] | null>(null); // new state
 
     const {
         conversations,
@@ -62,11 +63,29 @@ function App() {
     }, [currentConversationId, updateConversationMessages]);
 
     // --- Use Socket Manager with Callback ---
-    const { isConnected, sendMessage: sendSocketMessage } = useTrpcManager(
+    const { sendMessage: sendSocketMessage } = useTrpcManager(
         handleMessagesUpdate,
         setIsLoading,
-        setError, // Pass App.tsx's scrollToBottom
+        setError,
     );
+
+    const isConnected = true;
+
+    // Defer sending on new conversation until ID is set
+    useEffect(() => {
+        if (pendingMessages && currentConversationId) {
+            sendSocketMessage(pendingMessages);
+            setPendingMessages(null);
+        }
+    }, [pendingMessages, currentConversationId, sendSocketMessage]);
+
+    // Trigger sending messages once conversationId is set
+    useEffect(() => {
+        if (pendingMessages && currentConversationId) {
+            sendSocketMessage(pendingMessages);
+            setPendingMessages(null);
+        }
+    }, [pendingMessages, currentConversationId, sendSocketMessage]);
 
     // --- Handle Sending User Message ---
     const handleSendMessage = async (e: FormEvent<HTMLFormElement>) => {
@@ -88,18 +107,18 @@ function App() {
                 { role: 'system', content: initialSystemMessage },
                 { role: 'user', content: trimmedInput }
             ];
+            setPendingMessages(messagesForSocket); // wait for ID before sending
         } else if (currentConversation) {
             const userMessage: Message = { role: 'user', content: trimmedInput };
-            updateConversationMessages(targetConversationId, (prevMessages) => [...prevMessages, userMessage]);
+            updateConversationMessages(targetConversationId, (prev) => [...prev, userMessage]);
             messagesForSocket = [...currentConversation.messages, userMessage];
+            sendSocketMessage(messagesForSocket);
         } else {
             setError("Error sending message: Conversation context lost.");
             return;
         }
 
-        if (sendSocketMessage(messagesForSocket)) {
-            setInput('');
-        }
+        setInput('');
     };
 
     // --- Handle Flashcard Creation ---
@@ -164,7 +183,8 @@ function App() {
     useEffect(() => {
         if (displayMessages.length > 0) {
             // This will also be triggered by useTrpcManager updates via handleMessagesUpdate
-            console.log(`[App useEffect] displayMessages changed (length: ${displayMessages.length}). Scheduling scroll.`);
+            //console.log(`[App useEffect] displayMessages changed (length: ${displayMessages.length}). Scheduling scroll.`);
+            //console.log(displayMessages);
         }
     }, [displayMessages]); // Rerun if displayMessages or scrollToBottom changes
 
